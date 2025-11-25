@@ -66,5 +66,5 @@ Use Docker Compose for proper RMI isolation. See [DOCKER_TESTING.md](DOCKER_TEST
 
 ## Requirements
 
-- Java 23+
+- Java 21+
 - Gradle 8.5+
