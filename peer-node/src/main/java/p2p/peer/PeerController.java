@@ -1,9 +1,16 @@
 package p2p.peer;
 
+import p2p.common.model.Group;
+import p2p.common.model.GroupMessage;
 import p2p.common.model.User;
 import p2p.common.rmi.BootstrapService;
+import p2p.common.rmi.PeerService;
 import p2p.common.vectorclock.VectorClock;
+import p2p.peer.consensus.ConsensusManager;
 import p2p.peer.friends.FriendManager;
+import p2p.peer.groups.GroupManager;
+import p2p.peer.groups.LeaderElectionManager;
+import p2p.peer.messaging.GossipManager;
 import p2p.peer.messaging.MessageHandler;
 import p2p.peer.network.HeartbeatSender;
 import p2p.peer.network.PeerServiceImpl;
@@ -12,7 +19,9 @@ import p2p.peer.network.RMIServer;
 import java.net.InetAddress;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Programmatic peer controller for testing.
@@ -26,6 +35,10 @@ public class PeerController {
     private final VectorClock vectorClock;
     private final FriendManager friendManager;
     private final MessageHandler messageHandler;
+    private final GroupManager groupManager;
+    private final GossipManager gossipManager;
+    private final ConsensusManager consensusManager;
+    private final LeaderElectionManager electionManager;
     private final RMIServer rmiServer;
     private final HeartbeatSender heartbeatSender;
     private final Thread heartbeatThread;
@@ -52,10 +65,18 @@ public class PeerController {
         
         // Create subsystems
         this.friendManager = new FriendManager(localUser, vectorClock);
+        this.groupManager = new GroupManager(localUser, vectorClock);
         this.messageHandler = new MessageHandler(localUser, vectorClock, friendManager);
+        this.gossipManager = new GossipManager(localUser, groupManager);
+        this.consensusManager = new ConsensusManager(localUser, groupManager);
+        
+        // Create leader election manager
+        LeaderElectionManager electionManager = new LeaderElectionManager(localUser, groupManager);
+        this.groupManager.setElectionManager(electionManager);
         
         // Start RMI server
-        PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler);
+        PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager);
+        peerService.setElectionManager(electionManager);
         this.rmiServer = new RMIServer(rmiPort, "PeerService");
         
         // Create heartbeat sender
@@ -66,6 +87,9 @@ public class PeerController {
         // Connect to bootstrap
         Registry registry = LocateRegistry.getRegistry(bootstrapHost, bootstrapPort);
         this.bootstrapService = (BootstrapService) registry.lookup("BootstrapService");
+        
+        // Store election manager for lifecycle management
+        this.electionManager = electionManager;
     }
     
     /**
@@ -76,9 +100,11 @@ public class PeerController {
             throw new IllegalStateException("Peer already started");
         }
         
-        rmiServer.start(new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler));
+        rmiServer.start(new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager));
         heartbeatThread.start();
         bootstrapService.register(localUser);
+        gossipManager.start();
+        electionManager.start();
         
         started = true;
     }
@@ -91,6 +117,8 @@ public class PeerController {
             return;
         }
         
+        electionManager.stop();
+        gossipManager.stop();
         heartbeatSender.stop();
         heartbeatThread.interrupt();
         
@@ -189,5 +217,72 @@ public class PeerController {
      */
     public boolean isStarted() {
         return started;
+    }
+
+    // ========== Group Management API ==========
+
+    /**
+     * Creates a new group with the given name and friends.
+     */
+    public Group createGroup(String name, List<String> friendUsernames) throws Exception {
+        // Deduplicate usernames
+        List<String> uniqueUsernames = friendUsernames.stream()
+            .distinct()
+            .collect(java.util.stream.Collectors.toList());
+        
+        List<User> friends = new ArrayList<>();
+        for (String username : uniqueUsernames) {
+            User friend = friendManager.getFriendByUsername(username);
+            if (friend == null) {
+                throw new IllegalArgumentException("Not a friend: " + username);
+            }
+            friends.add(friend);
+        }
+        return groupManager.createGroup(name, friends);
+    }
+
+    /**
+     * Sends a message to a group.
+     */
+    public void sendGroupMessage(String groupId, String content) throws Exception {
+        Optional<Group> group = groupManager.getGroup(groupId);
+        if (group.isEmpty()) {
+            throw new IllegalArgumentException("Not a member of group: " + groupId);
+        }
+
+        synchronized (vectorClock) {
+            vectorClock.increment(localUser.getUserId());
+        }
+
+        GroupMessage message = GroupMessage.create(localUser, groupId, content, vectorClock.clone());
+        groupManager.addMessage(groupId, message);
+
+        // Broadcast to all group members
+        for (User member : group.get().getMembers()) {
+            if (member.getUserId().equals(localUser.getUserId())) {
+                continue; // Skip self
+            }
+            try {
+                Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
+                PeerService peerService = (PeerService) registry.lookup("PeerService");
+                peerService.receiveMessage(message);
+            } catch (Exception e) {
+                System.err.println("[Group] Failed to send to " + member.getUsername() + ": " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Gets all groups.
+     */
+    public List<Group> getGroups() {
+        return groupManager.getGroups();
+    }
+
+    /**
+     * Gets the group manager.
+     */
+    public GroupManager getGroupManager() {
+        return groupManager;
     }
 }

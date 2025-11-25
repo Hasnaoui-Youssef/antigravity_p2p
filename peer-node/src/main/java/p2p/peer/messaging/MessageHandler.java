@@ -1,6 +1,6 @@
 package p2p.peer.messaging;
 
-import p2p.common.model.Message;
+import p2p.common.model.DirectMessage;
 import p2p.common.model.User;
 import p2p.common.rmi.PeerService;
 import p2p.common.vectorclock.VectorClock;
@@ -45,7 +45,7 @@ public class MessageHandler {
         }
         
         // Create message
-        Message message = Message.create(localUser, recipient.getUserId(), content, vectorClock.clone());
+        DirectMessage message = DirectMessage.create(localUser, recipient.getUserId(), content, vectorClock.clone());
         
         // Send via RMI
         Registry registry = LocateRegistry.getRegistry(recipient.getIpAddress(), recipient.getRmiPort());
@@ -60,7 +60,7 @@ public class MessageHandler {
     /**
      * Handle incoming message (called by RMI).
      */
-    public void handleIncomingMessage(Message message) {
+    public void handleIncomingMessage(DirectMessage message) {
         String time = TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimestamp()));
         System.out.println("\n[" + time + "] " + message.getSenderUsername() + ": " + message.getContent());
         System.out.println("Vector Clock: " + message.getVectorClock());

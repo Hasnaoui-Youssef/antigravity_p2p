@@ -30,7 +30,7 @@ public interface PeerService extends Remote {
     void acceptFriendRequest(User accepter, VectorClock clock) throws RemoteException;
     
     /**
-     * Receive a message from a friend.
+     * Receive a generic message (Direct, Group, Gossip, etc.).
      * 
      * @param message The message to receive
      */

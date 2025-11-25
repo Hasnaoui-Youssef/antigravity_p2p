@@ -2,7 +2,10 @@ package p2p.peer;
 
 import p2p.common.model.User;
 import p2p.common.vectorclock.VectorClock;
+import p2p.peer.consensus.ConsensusManager;
 import p2p.peer.friends.FriendManager;
+import p2p.peer.groups.GroupManager;
+import p2p.peer.messaging.GossipManager;
 import p2p.peer.messaging.MessageHandler;
 import p2p.peer.network.HeartbeatSender;
 import p2p.peer.network.PeerServiceImpl;
@@ -35,10 +38,13 @@ public class PeerNode {
             
             // Create subsystems
             FriendManager friendManager = new FriendManager(localUser, vectorClock);
+            GroupManager groupManager = new GroupManager(localUser, vectorClock);
             MessageHandler messageHandler = new MessageHandler(localUser, vectorClock, friendManager);
+            GossipManager gossipManager = new GossipManager(localUser, groupManager);
+            ConsensusManager consensusManager = new ConsensusManager(localUser, groupManager);
             
             // Start RMI server
-            PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler);
+            PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager);
             RMIServer rmiServer = new RMIServer(cmdArgs.port, "PeerService");
             rmiServer.start(peerService);
             
@@ -49,17 +55,28 @@ public class PeerNode {
             heartbeatThread.setDaemon(true);
             heartbeatThread.start();
             
+            // Start gossip manager
+            gossipManager.start();
+            
+            // Create PeerController for UI
+            PeerController controller = new PeerController(cmdArgs.username, cmdArgs.port, cmdArgs.bootstrapHost, DEFAULT_BOOTSTRAP_RMI_PORT);
+            controller.start();
+            
             // Setup shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 System.out.println("\n[Peer] Shutting down...");
+                try {
+                    controller.stop();
+                } catch (Exception e) {
+                    // Ignore
+                }
+                gossipManager.stop();
                 heartbeatSender.stop();
                 rmiServer.stop();
             }));
             
             // Start terminal UI (blocks until user quits)
-            TerminalUI ui = new TerminalUI(
-                localUser, friendManager, messageHandler, 
-                cmdArgs.bootstrapHost, DEFAULT_BOOTSTRAP_RMI_PORT);
+            TerminalUI ui = new TerminalUI(controller, cmdArgs.bootstrapHost, DEFAULT_BOOTSTRAP_RMI_PORT);
             ui.start();
             
         } catch (Exception e) {

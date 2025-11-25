@@ -8,7 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for Message model.
+ * Unit tests for DirectMessage model.
  */
 class MessageTest {
     
@@ -25,8 +25,8 @@ class MessageTest {
     @Test
     @DisplayName("Create should generate unique message ID")
     void testCreate() {
-        Message msg1 = Message.create(sender, "receiver-id", "Hello", clock);
-        Message msg2 = Message.create(sender, "receiver-id", "Hi", clock);
+        DirectMessage msg1 = DirectMessage.create(sender, "receiver-id", "Hello", clock);
+        DirectMessage msg2 = DirectMessage.create(sender, "receiver-id", "Hi", clock);
         
         assertNotNull(msg1.getMessageId());
         assertNotNull(msg2.getMessageId());
@@ -36,7 +36,7 @@ class MessageTest {
     @Test
     @DisplayName("Create should set sender information correctly")
     void testCreateSenderInfo() {
-        Message msg = Message.create(sender, "receiver-id", "Test message", clock);
+        DirectMessage msg = DirectMessage.create(sender, "receiver-id", "Test message", clock);
         
         assertEquals(sender.getUserId(), msg.getSenderId());
         assertEquals(sender.getUsername(), msg.getSenderUsername());
@@ -47,7 +47,7 @@ class MessageTest {
     @Test
     @DisplayName("VectorClock should be cloned independently")
     void testVectorClockIndependence() {
-        Message msg = Message.create(sender, "receiver-id", "Test", clock);
+        DirectMessage msg = DirectMessage.create(sender, "receiver-id", "Test", clock);
         
         VectorClock msgClock = msg.getVectorClock();
         clock.increment(sender.getUserId());
@@ -61,7 +61,7 @@ class MessageTest {
     @DisplayName("Timestamp should be set to current time")
     void testTimestamp() {
         long before = System.currentTimeMillis();
-        Message msg = Message.create(sender, "receiver-id", "Test", clock);
+        DirectMessage msg = DirectMessage.create(sender, "receiver-id", "Test", clock);
         long after = System.currentTimeMillis();
         
         assertTrue(msg.getTimestamp() >= before);
@@ -71,11 +71,11 @@ class MessageTest {
     @Test
     @DisplayName("Equals should compare by message ID")
     void testEquals() {
-        Message msg1 = new Message("msg123", sender.getUserId(), sender.getUsername(), 
+        DirectMessage msg1 = new DirectMessage("msg123", sender.getUserId(), sender.getUsername(), 
                                    "receiver", "content1", 1000, clock);
-        Message msg2 = new Message("msg123", sender.getUserId(), sender.getUsername(), 
+        DirectMessage msg2 = new DirectMessage("msg123", sender.getUserId(), sender.getUsername(), 
                                    "receiver", "content2", 2000, clock); // Different content but same ID
-        Message msg3 = new Message("msg456", sender.getUserId(), sender.getUsername(), 
+        DirectMessage msg3 = new DirectMessage("msg456", sender.getUserId(), sender.getUsername(), 
                                    "receiver", "content1", 1000, clock);
         
         assertEquals(msg1, msg2);
@@ -85,7 +85,7 @@ class MessageTest {
     @Test
     @DisplayName("ToString should include sender and content")
     void testToString() {
-        Message msg = Message.create(sender, "receiver-id", "Hello!", clock);
+        DirectMessage msg = DirectMessage.create(sender, "receiver-id", "Hello!", clock);
         String str = msg.toString();
         
         assertTrue(str.contains(sender.getUsername()));

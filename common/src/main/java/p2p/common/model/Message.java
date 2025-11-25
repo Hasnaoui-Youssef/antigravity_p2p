@@ -1,47 +1,26 @@
 package p2p.common.model;
 
-import p2p.common.vectorclock.VectorClock;
-
 import java.io.Serializable;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Represents a message between peers with vector clock for ordering.
+ * Abstract base class for all P2P messages.
  */
-public final class Message implements Serializable {
-    private static final long serialVersionUID = 1L;
+public abstract class Message implements Serializable {
+    private static final long serialVersionUID = 2L;
     
-    private final String messageId;
-    private final String senderId;
-    private final String senderUsername;
-    private final String receiverId;
-    private final String content;
-    private final long timestamp;
-    private final VectorClock vectorClock;
+    protected final String messageId;
+    protected final String senderId;
+    protected final long timestamp;
+    protected final MessageType type;
     
-    public Message(String messageId, String senderId, String senderUsername,
-                   String receiverId, String content, long timestamp, VectorClock vectorClock) {
+    protected Message(String messageId, String senderId, long timestamp, MessageType type) {
         this.messageId = Objects.requireNonNull(messageId);
         this.senderId = Objects.requireNonNull(senderId);
-        this.senderUsername = Objects.requireNonNull(senderUsername);
-        this.receiverId = Objects.requireNonNull(receiverId);
-        this.content = Objects.requireNonNull(content);
         this.timestamp = timestamp;
-        this.vectorClock = Objects.requireNonNull(vectorClock).clone();
-    }
-    
-    public static Message create(User sender, String receiverId, String content, VectorClock clock) {
-        return new Message(
-            UUID.randomUUID().toString(),
-            sender.getUserId(),
-            sender.getUsername(),
-            receiverId,
-            content,
-            Instant.now().toEpochMilli(),
-            clock
-        );
+        this.type = Objects.requireNonNull(type);
     }
     
     public String getMessageId() {
@@ -52,24 +31,12 @@ public final class Message implements Serializable {
         return senderId;
     }
     
-    public String getSenderUsername() {
-        return senderUsername;
-    }
-    
-    public String getReceiverId() {
-        return receiverId;
-    }
-    
-    public String getContent() {
-        return content;
-    }
-    
     public long getTimestamp() {
         return timestamp;
     }
     
-    public VectorClock getVectorClock() {
-        return vectorClock.clone();
+    public MessageType getType() {
+        return type;
     }
     
     @Override
@@ -87,7 +54,6 @@ public final class Message implements Serializable {
     
     @Override
     public String toString() {
-        return String.format("Message{from='%s', to='%s', content='%s', vc=%s}",
-                           senderUsername, receiverId, content, vectorClock);
+        return String.format("Message{id='%s', type=%s, sender='%s'}", messageId, type, senderId);
     }
 }
