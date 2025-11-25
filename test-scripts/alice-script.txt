@@ -1,0 +1,23 @@
+# Sample test script for automated peer testing
+# Comments start with #
+
+# Wait for initialization
+SLEEP 2000
+
+# Search for other peer
+# SEARCH Bob
+
+# Send a friend request
+# ADD_FRIEND Bob
+
+# Wait for acceptance (would be in Bob's script)
+SLEEP 3000
+
+# Send a message
+SEND_MESSAGE Bob Hello from automated test!
+
+# List friends
+LIST_FRIENDS
+
+# Wait before exit
+SLEEP 1000
