@@ -98,9 +98,16 @@ public class LeaderElectionManager {
         String groupId = group.getGroupId();
         long newEpoch = group.getEpoch() + 1;
         
+        // Check if we're the leader (shouldn't initiate election if we are)
+        if (group.getLeaderId().equals(localUser.getUserId())) {
+            System.out.println("[Election] We are the leader - not initiating election");
+            return;
+        }
+        
         // Check if election already ongoing for this epoch
         ElectionState existingState = ongoingElections.get(groupId);
         if (existingState != null && existingState.epoch == newEpoch) {
+            System.out.println("[Election] Election already ongoing for epoch " + newEpoch);
             return; // Already in progress
         }
         
@@ -109,11 +116,13 @@ public class LeaderElectionManager {
         String determinedCandidate = determineCandidateLexicographically(group);
         
         System.out.println("[Election] Leader suspected for group " + group.getName() + 
-            " (epoch " + newEpoch + "), deterministic candidate: " + determinedCandidate);
+            " (epoch " + newEpoch + "), deterministic candidate: " + determinedCandidate.substring(0, 8));
         
         // Only the determined candidate should propose
         if (!determinedCandidate.equals(localUser.getUserId())) {
             // We're not the candidate, just wait for proposal from determined candidate
+            System.out.println("[Election] Not the candidate (we are " + localUser.getUserId().substring(0, 8) + 
+                "), waiting for proposal");
             return;
         }
         
@@ -348,21 +357,24 @@ public class LeaderElectionManager {
             .orElse(null);
         
         if (target == null) {
-            // Maybe they're the leader
-            if (group.getLeaderId().equals(userId)) {
-                // We don't have leader's User object in members, so we can't send
-                return;
-            }
+            System.err.println("[Election] Cannot find user " + userId.substring(0, 8) + 
+                " in group members to send vote");
             return;
         }
+        
+        System.out.println("[Election] Sending " + message.getElectionType() + " to " + 
+            target.getUsername() + " at " + target.getIpAddress() + ":" + target.getRmiPort());
         
         executor.submit(() -> {
             try {
                 Registry registry = LocateRegistry.getRegistry(target.getIpAddress(), target.getRmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
                 peerService.receiveMessage(message);
+                System.out.println("[Election] Successfully sent " + message.getElectionType() + 
+                    " to " + target.getUsername());
             } catch (Exception e) {
-                // System.err.println("[Election] Failed to send to " + target.getUsername() + ": " + e.getMessage());
+                System.err.println("[Election] Failed to send " + message.getElectionType() + 
+                    " to " + target.getUsername() + ": " + e.getMessage());
             }
         });
     }

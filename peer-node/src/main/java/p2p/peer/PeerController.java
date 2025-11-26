@@ -76,7 +76,7 @@ public class PeerController {
         electionManager.setGossipManager(gossipManager);
         this.groupManager.setElectionManager(electionManager);
         
-        // Start RMI server
+        // Create RMI server with peer service
         PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager);
         peerService.setElectionManager(electionManager);
         this.rmiServer = new RMIServer(rmiPort, "PeerService");
@@ -90,9 +90,12 @@ public class PeerController {
         Registry registry = LocateRegistry.getRegistry(bootstrapHost, bootstrapPort);
         this.bootstrapService = (BootstrapService) registry.lookup("BootstrapService");
         
-        // Store election manager for lifecycle management
+        // Store for lifecycle management
         this.electionManager = electionManager;
+        this.peerService = peerService;
     }
+    
+    private PeerServiceImpl peerService;
     
     /**
      * Starts the peer (RMI server, heartbeat).
@@ -102,7 +105,7 @@ public class PeerController {
             throw new IllegalStateException("Peer already started");
         }
         
-        rmiServer.start(new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager));
+        rmiServer.start(peerService);  // Use the pre-configured instance
         heartbeatThread.start();
         bootstrapService.register(localUser);
         gossipManager.start();

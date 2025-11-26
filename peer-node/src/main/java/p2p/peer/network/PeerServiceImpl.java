@@ -143,8 +143,15 @@ public class PeerServiceImpl extends UnicastRemoteObject implements PeerService 
     
     private void handleElectionMessage(ElectionMessage message) {
         if (electionManager == null) {
+            System.err.println("[PeerService] Received election message but electionManager is null!");
             return;
         }
+        
+        System.out.println("[PeerService] Received " + message.getElectionType() + 
+            " from " + message.getSenderId().substring(0, 8) + 
+            " for group " + message.getGroupId().substring(0, 8) + 
+            " epoch " + message.getEpoch());
+        
         switch (message.getElectionType()) {
             case PROPOSAL -> {
                 // Received election proposal
