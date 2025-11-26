@@ -71,8 +71,9 @@ public class PeerController {
         this.consensusManager = new ConsensusManager(localUser, groupManager);
         this.gossipManager.setConsensusManager(consensusManager);
         
-        // Create leader election manager
+        // Create leader election manager and wire it to gossip manager
         LeaderElectionManager electionManager = new LeaderElectionManager(localUser, groupManager);
+        electionManager.setGossipManager(gossipManager);
         this.groupManager.setElectionManager(electionManager);
         
         // Start RMI server

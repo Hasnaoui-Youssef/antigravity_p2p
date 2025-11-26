@@ -274,9 +274,9 @@ public class GroupManager {
         // Clean up pending state
         pendingGroups.remove(groupId);
         
-        // Start heartbeat tracking for this group
+        // Record initial leader activity for this group
         if (electionManager != null) {
-            electionManager.recordLeaderHeartbeat(groupId);
+            electionManager.recordLeaderActivity(groupId);
         }
         
         System.out.println("[GroupManager] Group '" + pending.getGroupName() + "' finalized with " + 
@@ -322,9 +322,9 @@ public class GroupManager {
         groups.put(group.getGroupId(), group);
         groupMessages.put(group.getGroupId(), new ArrayList<>());
         
-        // Start heartbeat tracking
+        // Record initial leader activity
         if (electionManager != null) {
-            electionManager.recordLeaderHeartbeat(group.getGroupId());
+            electionManager.recordLeaderActivity(group.getGroupId());
         }
         
         System.out.println("[GroupManager] Added finalized group '" + group.getName() + "' with " + 

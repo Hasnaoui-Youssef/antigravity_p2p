@@ -97,6 +97,15 @@ public class PeerServiceImpl extends UnicastRemoteObject implements PeerService 
         }
         // Store in group and display
         groupManager.addMessage(message.getGroupId(), message);
+        
+        // Record leader activity if message is from leader
+        Group group = groupManager.getGroup(message.getGroupId());
+        if (group != null && message.getSenderId().equals(group.getLeaderId())) {
+            if (electionManager != null) {
+                electionManager.recordLeaderActivity(message.getGroupId());
+            }
+        }
+        
         System.out.println("\n[Group: " + message.getGroupId() + "] " + 
             message.getSenderUsername() + ": " + message.getContent());
         System.out.print("> ");
