@@ -69,9 +69,26 @@ public class LeaderElectionManager {
      */
     private void initiateElectionForGroup(String groupId) {
         Group group = groupManager.getGroup(groupId);
-        if (group != null) {
-            initiateElection(group);
+        if (group == null) {
+            return;
         }
+        
+        // Check if group has fallen below minimum size
+        // When leader fails, only non-leader members remain
+        int remainingMembers = group.getMembers().size(); // Excludes the failed leader
+        if (remainingMembers <= 2) {
+            // Need at least 3 members after selecting new leader (2 non-leader + 1 new leader)
+            // With only 2 remaining, we'd have 1 leader + 1 member = 2 total (below minimum of 3)
+            System.out.println("[Election] Group " + group.getName() + " has only " + 
+                remainingMembers + " remaining members after leader failure. Auto-dissolving...");
+            groupManager.dissolveGroup(groupId);
+            if (gossipManager != null) {
+                gossipManager.clearFailureTracking(groupId);
+            }
+            return;
+        }
+        
+        initiateElection(group);
     }
     
     /**

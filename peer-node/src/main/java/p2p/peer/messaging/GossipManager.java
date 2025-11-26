@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -40,6 +41,9 @@ public class GossipManager {
     
     // Suspicion tracking: groupId -> Map<peerId, timestamp of their last report>
     private final Map<String, Map<String, Long>> suspicionReports = new ConcurrentHashMap<>();
+    
+    // Track groups for which we've already triggered failure callback
+    private final Set<String> failureTriggered = ConcurrentHashMap.newKeySet();
     
     // Callback for leader failure detection
     private LeaderFailureCallback failureCallback;
@@ -66,10 +70,39 @@ public class GossipManager {
 
     public void start() {
         scheduler.scheduleAtFixedRate(this::gossip, 1, 1, TimeUnit.SECONDS);
+        // Also periodically check for leader timeouts independently
+        scheduler.scheduleAtFixedRate(this::checkLeaderTimeouts, 2, 2, TimeUnit.SECONDS);
     }
 
     public void stop() {
         scheduler.shutdown();
+    }
+    
+    /**
+     * Periodic check for leader timeouts (backup to gossip-based detection).
+     * This ensures even isolated nodes can detect leader failure.
+     */
+    private void checkLeaderTimeouts() {
+        long now = System.currentTimeMillis();
+        long TIMEOUT_MS = 7000; // 7 seconds - longer than suspicion threshold
+        
+        for (Group group : groupManager.getGroups()) {
+            String groupId = group.getGroupId();
+            
+            // Skip if we're the leader
+            if (group.getLeaderId().equals(localUser.getUserId())) {
+                continue;
+            }
+            
+            long lastSeen = getLeaderLastSeen(groupId);
+            if (now - lastSeen > TIMEOUT_MS) {
+                // Leader timeout detected
+                if (failureCallback != null && failureTriggered.add(groupId)) {
+                    System.out.println("[Gossip] Local timeout detected for group " + group.getName());
+                    failureCallback.onLeaderSuspected(groupId);
+                }
+            }
+        }
     }
     
     /**
@@ -169,6 +202,7 @@ public class GossipManager {
     /**
      * Process leader liveness reports from gossip messages.
      * Uses Phi Accrual-style failure detection with suspicion accumulation.
+     * For small groups (<=4 members), also triggers on local timeout alone.
      */
     private void processLeaderLiveness(GossipMessage message, Group group) {
         String groupId = group.getGroupId();
@@ -197,7 +231,18 @@ public class GossipManager {
             suspicionReports.computeIfAbsent(groupId, k -> new ConcurrentHashMap<>())
                 .put(senderId, now);
             
-            // Check if we have enough suspicion reports (quorum)
+            // Check our own last seen timestamp too
+            long ourLastSeen = getLeaderLastSeen(groupId);
+            boolean weAlsoSuspect = (now - ourLastSeen) > SUSPICION_THRESHOLD_MS;
+            
+            System.out.println("[Gossip] Peer " + senderId.substring(0, 8) + " suspects leader, " +
+                "we also suspect: " + weAlsoSuspect);
+            
+            if (!weAlsoSuspect) {
+                return; // We don't suspect the leader yet
+            }
+            
+            // Check if we have enough suspicion reports
             Map<String, Long> reports = suspicionReports.get(groupId);
             
             // Count recent reports (within last 10 seconds)
@@ -205,22 +250,42 @@ public class GossipManager {
                 .filter(timestamp -> now - timestamp < 10000)
                 .count();
             
-            // Calculate group size (leader + members)
-            int groupSize = group.getMembers().size() + 1;
-            int quorum = (groupSize / 2) + 1;
+            // For small groups (3-4 members), require at least 1 peer report + our own suspicion
+            // OR just our own suspicion if enough time has passed
+            // For larger groups, require majority
+            int totalMembers = group.getMembers().size() + 1; // members + leader
+            boolean shouldTrigger;
             
-            // If majority of peers suspect leader failure, trigger election
-            if (recentReportCount >= quorum - 1) { // -1 because we don't count ourselves yet
-                // Add our own suspicion
-                long ourLastSeen = getLeaderLastSeen(groupId);
-                if (now - ourLastSeen > SUSPICION_THRESHOLD_MS) {
-                    if (failureCallback != null) {
-                        failureCallback.onLeaderSuspected(groupId);
-                    }
-                    // Clear suspicion reports after triggering
-                    suspicionReports.remove(groupId);
+            if (totalMembers <= 4) {
+                // Small group: trigger if we suspect AND at least one other peer suspects
+                // OR if we've been suspecting for more than 2 * SUSPICION_THRESHOLD (10 seconds)
+                long localSuspicionDuration = now - ourLastSeen;
+                shouldTrigger = (recentReportCount >= 1) || (localSuspicionDuration > 2 * SUSPICION_THRESHOLD_MS);
+            } else {
+                // Larger group: require quorum
+                int quorum = (totalMembers / 2) + 1;
+                shouldTrigger = recentReportCount >= quorum - 1; // -1 because we don't count ourselves in reports
+            }
+            
+            System.out.println("[Gossip] Reports: " + recentReportCount + ", totalMembers: " + totalMembers + 
+                ", shouldTrigger: " + shouldTrigger);
+            
+            if (shouldTrigger && failureCallback != null) {
+                // Only trigger once per group (until leader changes)
+                if (failureTriggered.add(groupId)) {
+                    System.out.println("[Gossip] Triggering leader failure callback for group " + groupId);
+                    failureCallback.onLeaderSuspected(groupId);
                 }
+                // Don't clear suspicion reports - let them accumulate for other nodes
             }
         }
+    }
+    
+    /**
+     * Clear failure tracking when a new leader is elected or group is dissolved.
+     */
+    public void clearFailureTracking(String groupId) {
+        failureTriggered.remove(groupId);
+        suspicionReports.remove(groupId);
     }
 }

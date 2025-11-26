@@ -341,6 +341,18 @@ public class GroupManager {
         // TODO: Notify invited users that group was dissolved
     }
     
+    /**
+     * Dissolve an active group (e.g., when it falls below minimum size).
+     */
+    public void dissolveGroup(String groupId) {
+        Group group = groups.remove(groupId);
+        if (group != null) {
+            groupMessages.remove(groupId);
+            System.out.println("[GroupManager] Group '" + group.getName() + 
+                "' dissolved (fell below minimum size)");
+        }
+    }
+    
     
     /**
      * Get a specific group by ID.
