@@ -6,5 +6,7 @@ public enum MessageType {
     GOSSIP,
     SYNC_REQUEST,
     SYNC_RESPONSE,
-    ELECTION
+    ELECTION,
+    INVITATION_REQUEST,
+    INVITATION_RESPONSE
 }

@@ -4,6 +4,10 @@ import p2p.common.vectorclock.VectorClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import p2p.common.model.message.DirectMessage;
+import p2p.common.model.message.Message;
+import p2p.common.model.MessageType;
+import p2p.common.model.User;
 
 import static org.junit.jupiter.api.Assertions.*;
 

@@ -1,6 +1,7 @@
 package p2p.peer.consensus;
 
 import p2p.common.model.*;
+import p2p.common.model.message.*;
 import p2p.common.rmi.PeerService;
 import p2p.common.vectorclock.VectorClock;
 import p2p.peer.groups.GroupManager;
@@ -20,6 +21,9 @@ public class ConsensusManager {
     private final GroupManager groupManager;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
+    // Map of requestId -> Future to track pending sync requests
+    private final Map<String, CompletableFuture<List<Message>>> pendingRequests = new ConcurrentHashMap<>();
+
     public ConsensusManager(User localUser, GroupManager groupManager) {
         this.localUser = localUser;
         this.groupManager = groupManager;
@@ -31,31 +35,28 @@ public class ConsensusManager {
     public void initiateSync(String groupId, VectorClock lastKnownState) {
         executor.submit(() -> {
             try {
-                Optional<Group> groupOpt = groupManager.getGroup(groupId);
-                if (groupOpt.isEmpty()) {
+                Group group = groupManager.getGroup(groupId);
+                if (group == null) {
                     return;
                 }
                 
-                Group group = groupOpt.get();
                 List<User> quorum = selectQuorum(group);
                 
                 if (quorum.isEmpty()) {
-                    System.out.println("[Consensus] No quorum available for group " + groupId);
+                    // System.out.println("[Consensus] No quorum available for group " + groupId);
                     return;
                 }
-                
-                System.out.println("[Consensus] Querying quorum of " + quorum.size() + 
-                    " members for group " + groupId);
                 
                 // Send sync requests to quorum members in parallel
                 List<List<Message>> responses = queryQuorum(groupId, lastKnownState, quorum);
                 
                 // Merge responses and apply to local state
                 List<Message> mergedMessages = mergeResponses(responses);
-                applyMessages(groupId, mergedMessages);
-                
-                System.out.println("[Consensus] Sync complete for group " + groupId + 
-                    " - received " + mergedMessages.size() + " messages");
+                if (!mergedMessages.isEmpty()) {
+                    applyMessages(groupId, mergedMessages);
+                    System.out.println("[Consensus] Sync complete for group " + groupId + 
+                        " - received " + mergedMessages.size() + " messages");
+                }
                 
             } catch (Exception e) {
                 System.err.println("[Consensus] Sync failed for group " + groupId + ": " + e.getMessage());
@@ -71,6 +72,8 @@ public class ConsensusManager {
             .filter(u -> !u.getUserId().equals(localUser.getUserId()))
             .collect(Collectors.toList());
         
+        if (members.isEmpty()) return Collections.emptyList();
+        
         int quorumSize = (members.size() / 2) + 1;
         
         // Return up to quorumSize members
@@ -84,8 +87,7 @@ public class ConsensusManager {
      */
     private List<List<Message>> queryQuorum(String groupId, VectorClock lastKnownState, List<User> quorum) {
         List<CompletableFuture<List<Message>>> futures = quorum.stream()
-            .map(member -> CompletableFuture.supplyAsync(() -> 
-                querySingleMember(groupId, lastKnownState, member), executor))
+            .map(member -> querySingleMember(groupId, lastKnownState, member))
             .collect(Collectors.toList());
         
         // Wait for all responses (with timeout)
@@ -114,24 +116,46 @@ public class ConsensusManager {
     /**
      * Query a single member for missing messages.
      */
-    private List<Message> querySingleMember(String groupId, VectorClock lastKnownState, User member) {
+    private CompletableFuture<List<Message>> querySingleMember(String groupId, VectorClock lastKnownState, User member) {
+        CompletableFuture<List<Message>> future = new CompletableFuture<>();
+        String requestId = UUID.randomUUID().toString();
+        
         try {
-            SyncRequest request = SyncRequest.create(localUser.getUserId(), groupId, lastKnownState);
+            // Store future to be completed when response arrives
+            pendingRequests.put(requestId, future);
+            
+            // Schedule timeout cleanup
+            executor.submit(() -> {
+                try {
+                    Thread.sleep(5000);
+                    if (pendingRequests.remove(requestId) != null) {
+                        future.complete(Collections.emptyList());
+                    }
+                } catch (InterruptedException e) {
+                    // Ignore
+                }
+            });
+
+            SyncRequest request = new SyncRequest(
+                requestId, // Use request ID as message ID for simplicity in tracking
+                localUser.getUserId(),
+                System.currentTimeMillis(),
+                groupId,
+                lastKnownState
+            );
             
             Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
             PeerService peerService = (PeerService) registry.lookup("PeerService");
             
-            // This is a simplification - in real implementation, we'd wait for async response
-            // For now, we'll track pending requests and responses separately
             peerService.receiveMessage(request);
-            
-            // Return empty for now - responses will be handled via handleSyncResponse
-            return Collections.emptyList();
             
         } catch (Exception e) {
             System.err.println("[Consensus] Failed to query " + member.getUsername() + ": " + e.getMessage());
-            return Collections.emptyList();
+            pendingRequests.remove(requestId);
+            future.complete(Collections.emptyList());
         }
+        
+        return future;
     }
 
     /**
@@ -166,10 +190,10 @@ public class ConsensusManager {
     /**
      * Handle incoming sync request from another peer.
      */
-    public void handleSyncRequest(String groupId, VectorClock senderClock, User requester) {
+    public void handleSyncRequest(String groupId, VectorClock senderClock, User requester, String requestId) {
         try {
-            Optional<Group> groupOpt = groupManager.getGroup(groupId);
-            if (groupOpt.isEmpty()) {
+            Group group = groupManager.getGroup(groupId);
+            if (group == null) {
                 return;
             }
             
@@ -177,28 +201,32 @@ public class ConsensusManager {
             List<Message> allMessages = groupManager.getMessages(groupId);
             
             // Filter to messages the requester doesn't have
-            // Simplified: send all messages newer than their last known state
             List<Message> missingMessages = allMessages.stream()
                 .filter(msg -> shouldSendMessage(msg, senderClock))
                 .collect(Collectors.toList());
             
             if (missingMessages.isEmpty()) {
-                System.out.println("[Consensus] No missing messages for " + requester.getUsername());
+                // Send empty response to complete the future on the other side
+                sendSyncResponse(requester, requestId, groupId, Collections.emptyList());
                 return;
             }
             
-            // Send sync response
-            SyncResponse response = SyncResponse.create(localUser.getUserId(), groupId, missingMessages);
+            sendSyncResponse(requester, requestId, groupId, missingMessages);
+            
+        } catch (Exception e) {
+            System.err.println("[Consensus] Failed to handle sync request: " + e.getMessage());
+        }
+    }
+    
+    private void sendSyncResponse(User requester, String requestId, String groupId, List<Message> messages) {
+        try {
+            SyncResponse response = SyncResponse.create(localUser.getUserId(), requestId, groupId, messages);
             
             Registry registry = LocateRegistry.getRegistry(requester.getIpAddress(), requester.getRmiPort());
             PeerService peerService = (PeerService) registry.lookup("PeerService");
             peerService.receiveMessage(response);
-            
-            System.out.println("[Consensus] Sent " + missingMessages.size() + 
-                " messages to " + requester.getUsername());
-            
         } catch (Exception e) {
-            System.err.println("[Consensus] Failed to handle sync request: " + e.getMessage());
+            System.err.println("[Consensus] Failed to send sync response: " + e.getMessage());
         }
     }
 
@@ -206,22 +234,35 @@ public class ConsensusManager {
      * Determine if a message should be sent based on sender's vector clock.
      */
     private boolean shouldSendMessage(Message msg, VectorClock senderClock) {
-        // Simplified logic: compare timestamps
-        // In a real implementation, would use vector clock comparison
-        return true; // For now, send all messages
+        VectorClock msgClock = null;
+        
+        if (msg instanceof DirectMessage) {
+            msgClock = ((DirectMessage) msg).getVectorClock();
+        } else if (msg instanceof GroupMessage) {
+            msgClock = ((GroupMessage) msg).getVectorClock();
+        }
+        
+        // If the message has a vector clock, check if the sender has seen it
+        if (msgClock != null) {
+            // If senderClock >= msgClock, they have seen it.
+            // We send if NOT (senderClock >= msgClock)
+            // i.e., if msgClock is NOT causally preceding or equal to senderClock
+            return !msgClock.happensBefore(senderClock) && !msgClock.equals(senderClock);
+        }
+        
+        // Fallback for messages without vector clocks (shouldn't happen in groups usually)
+        return true;
     }
 
     /**
      * Handle incoming sync response.
      */
     public void handleSyncResponse(SyncResponse response) {
-        String groupId = response.getGroupId();
-        List<Message> messages = response.getMissingMessages();
+        String requestId = response.getRequestId();
+        CompletableFuture<List<Message>> future = pendingRequests.remove(requestId);
         
-        System.out.println("[Consensus] Received " + messages.size() + 
-            " messages for group " + groupId);
-        
-        // Apply messages to local state
-        applyMessages(groupId, messages);
+        if (future != null) {
+            future.complete(response.getMissingMessages());
+        }
     }
 }

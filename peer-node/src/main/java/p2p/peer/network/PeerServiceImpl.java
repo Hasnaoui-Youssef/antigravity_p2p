@@ -1,6 +1,7 @@
 package p2p.peer.network;
 
 import p2p.common.model.*;
+import p2p.common.model.message.*;
 import p2p.common.rmi.PeerService;
 import p2p.common.vectorclock.VectorClock;
 import p2p.peer.consensus.ConsensusManager;
@@ -78,6 +79,8 @@ public class PeerServiceImpl extends UnicastRemoteObject implements PeerService 
             case SYNC_REQUEST -> handleSyncRequest((SyncRequest) message);
             case SYNC_RESPONSE -> handleSyncResponse((SyncResponse) message);
             case ELECTION -> handleElectionMessage((ElectionMessage) message);
+            case INVITATION_REQUEST -> handleInvitationRequest((GroupInvitationRequest) message);
+            case INVITATION_RESPONSE -> handleInvitationResponse((GroupInvitationResponse) message);
         }
     }
     
@@ -100,12 +103,8 @@ public class PeerServiceImpl extends UnicastRemoteObject implements PeerService 
     }
     
     private void handleGossipMessage(GossipMessage message) {
-        // Find sender user
-        User sender = findUserBySenderId(message.getSenderId());
-        if (sender != null && gossipManager != null) {
-            gossipManager.handleGossipMessage(message, sender);
-        } else {
-            System.out.println("[Gossip] Received from " + message.getSenderId() + " but sender not in friends");
+        if (gossipManager != null) {
+            gossipManager.handleGossipMessage(message);
         }
     }
     
@@ -123,7 +122,7 @@ public class PeerServiceImpl extends UnicastRemoteObject implements PeerService 
         // Find requester
         User requester = findUserBySenderId(message.getSenderId());
         if (requester != null && consensusManager != null) {
-            consensusManager.handleSyncRequest(message.getGroupId(), message.getLastKnownState(), requester);
+            consensusManager.handleSyncRequest(message.getGroupId(), message.getLastKnownState(), requester, message.getMessageId());
         }
     }
     
@@ -134,25 +133,34 @@ public class PeerServiceImpl extends UnicastRemoteObject implements PeerService 
     }
     
     private void handleElectionMessage(ElectionMessage message) {
+        if (electionManager == null) {
+            return;
+        }
         switch (message.getElectionType()) {
             case PROPOSAL -> {
                 // Received election proposal
-                if (electionManager != null) {
-                    electionManager.handleElectionProposal(message);
-                }
+                electionManager.handleElectionProposal(message);
             }
             case VOTE -> {
                 // Received vote
-                if (electionManager != null) {
-                    electionManager.handleElectionVote(message);
-                }
+                electionManager.handleElectionVote(message);
             }
             case RESULT -> {
                 // Received election result
-                if (electionManager != null) {
-                    electionManager.handleElectionResult(message);
-                }
+                electionManager.handleElectionResult(message);
             }
+        }
+    }
+    
+    private void handleInvitationRequest(GroupInvitationRequest message) {
+        if (groupManager != null) {
+            groupManager.handleInvitationRequest(message);
+        }
+    }
+    
+    private void handleInvitationResponse(GroupInvitationResponse message) {
+        if (groupManager != null) {
+            groupManager.handleInvitationResponse(message);
         }
     }
     
@@ -166,5 +174,12 @@ public class PeerServiceImpl extends UnicastRemoteObject implements PeerService 
     @Override
     public boolean ping() throws RemoteException {
         return true;
+    }
+    
+    @Override
+    public void addFinalizedGroup(Group group) throws RemoteException {
+        if (groupManager != null) {
+            groupManager.addFinalizedGroup(group);
+        }
     }
 }

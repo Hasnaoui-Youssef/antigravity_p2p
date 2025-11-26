@@ -45,9 +45,9 @@ public final class User implements Serializable {
     
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        User user = (User) o;
+        if(o == null) return false;
+        if(o == this) return true;
+        if(!(o instanceof User user)) return false;
         return userId.equals(user.userId);
     }
     

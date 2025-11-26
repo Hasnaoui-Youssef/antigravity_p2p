@@ -36,9 +36,9 @@ public class PeerNode {
             VectorClock vectorClock = new VectorClock();
             vectorClock.increment(localUser.getUserId());
             
-            // Create subsystems
+            // Create managers
             FriendManager friendManager = new FriendManager(localUser, vectorClock);
-            GroupManager groupManager = new GroupManager(localUser, vectorClock);
+            GroupManager groupManager = new GroupManager(localUser, vectorClock, friendManager);
             MessageHandler messageHandler = new MessageHandler(localUser, vectorClock, friendManager);
             GossipManager gossipManager = new GossipManager(localUser, groupManager);
             ConsensusManager consensusManager = new ConsensusManager(localUser, groupManager);

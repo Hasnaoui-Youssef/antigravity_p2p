@@ -1,7 +1,8 @@
 package p2p.common.rmi;
 
-import p2p.common.model.Message;
+import p2p.common.model.Group;
 import p2p.common.model.User;
+import p2p.common.model.message.Message;
 import p2p.common.vectorclock.VectorClock;
 
 import java.rmi.Remote;
@@ -49,4 +50,11 @@ public interface PeerService extends Remote {
      * @return true if peer is responsive
      */
     boolean ping() throws RemoteException;
+    
+    /**
+     * Receive a finalized group after accepting an invitation.
+     * 
+     * @param group The finalized group to add
+     */
+    void addFinalizedGroup(Group group) throws RemoteException;
 }

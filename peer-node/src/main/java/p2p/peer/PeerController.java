@@ -1,7 +1,7 @@
 package p2p.peer;
 
 import p2p.common.model.Group;
-import p2p.common.model.GroupMessage;
+import p2p.common.model.message.GroupMessage;
 import p2p.common.model.User;
 import p2p.common.rmi.BootstrapService;
 import p2p.common.rmi.PeerService;
@@ -65,10 +65,11 @@ public class PeerController {
         
         // Create subsystems
         this.friendManager = new FriendManager(localUser, vectorClock);
-        this.groupManager = new GroupManager(localUser, vectorClock);
+        this.groupManager = new GroupManager(localUser, vectorClock, friendManager);
         this.messageHandler = new MessageHandler(localUser, vectorClock, friendManager);
         this.gossipManager = new GossipManager(localUser, groupManager);
         this.consensusManager = new ConsensusManager(localUser, groupManager);
+        this.gossipManager.setConsensusManager(consensusManager);
         
         // Create leader election manager
         LeaderElectionManager electionManager = new LeaderElectionManager(localUser, groupManager);
@@ -245,29 +246,50 @@ public class PeerController {
      * Sends a message to a group.
      */
     public void sendGroupMessage(String groupId, String content) throws Exception {
-        Optional<Group> group = groupManager.getGroup(groupId);
-        if (group.isEmpty()) {
+        Group group = groupManager.getGroup(groupId);
+        if (group == null) {
             throw new IllegalArgumentException("Not a member of group: " + groupId);
         }
 
-        synchronized (vectorClock) {
-            vectorClock.increment(localUser.getUserId());
-        }
 
-        GroupMessage message = GroupMessage.create(localUser, groupId, content, vectorClock.clone());
+        GroupMessage message = GroupMessage.create(localUser, groupId, content, vectorClock);
+        vectorClock.increment(localUser.getUserId());
+        
+        // Store message locally first
         groupManager.addMessage(groupId, message);
 
-        // Broadcast to all group members
-        for (User member : group.get().getMembers()) {
+        // Broadcast to ALL group participants (members + leader)
+        // Members list doesn't include leader, so we need to handle both
+        for (User member : group.getMembers()) {
             if (member.getUserId().equals(localUser.getUserId())) {
                 continue; // Skip self
             }
+            
             try {
                 Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
                 peerService.receiveMessage(message);
             } catch (Exception e) {
                 System.err.println("[Group] Failed to send to " + member.getUsername() + ": " + e.getMessage());
+            }
+        }
+        
+        // Also send to leader if we're not the leader
+        if (!group.getLeaderId().equals(localUser.getUserId())) {
+            try {
+                // Find leader in friends or members
+                User leader = friendManager.getFriends().stream()
+                    .filter(f -> f.getUserId().equals(group.getLeaderId()))
+                    .findFirst()
+                    .orElse(null);
+                
+                if (leader != null) {
+                    Registry registry = LocateRegistry.getRegistry(leader.getIpAddress(), leader.getRmiPort());
+                    PeerService peerService = (PeerService) registry.lookup("PeerService");
+                    peerService.receiveMessage(message);
+                }
+            } catch (Exception e) {
+                System.err.println("[Group] Failed to send to leader: " + e.getMessage());
             }
         }
     }
@@ -278,11 +300,45 @@ public class PeerController {
     public List<Group> getGroups() {
         return groupManager.getGroups();
     }
-
+    
+    /**
+     * Get a specific group by ID.
+     */
+    public Group getGroup(String groupId) {
+        return groupManager.getGroup(groupId);
+    }
+    
     /**
      * Gets the group manager.
      */
     public GroupManager getGroupManager() {
         return groupManager;
+    }
+    
+    /**
+     * Set the invitation handler for controlling accept/reject decisions.
+     * Used by tests to programmatically control invitation responses.
+     */
+    public void setInvitationHandler(p2p.peer.groups.InvitationHandler handler) {
+        groupManager.setInvitationHandler(handler);
+    }
+
+    // ========== Network Simulation for Testing ==========
+
+    /**
+     * Simulates network failure by stopping the RMI server.
+     * The peer will be unable to receive messages.
+     */
+    public void simulateNetworkFailure() {
+        rmiServer.stop();
+    }
+
+    /**
+     * Restores network connectivity by restarting the RMI server.
+     */
+    public void restoreNetwork() throws Exception {
+        PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager);
+        peerService.setElectionManager(electionManager);
+        rmiServer.start(peerService);
     }
 }

@@ -1,5 +1,7 @@
-package p2p.common.model;
+package p2p.common.model.message;
 
+import p2p.common.model.MessageType;
+import p2p.common.model.User;
 import p2p.common.vectorclock.VectorClock;
 
 import java.time.Instant;

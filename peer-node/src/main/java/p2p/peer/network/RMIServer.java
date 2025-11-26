@@ -23,9 +23,17 @@ public class RMIServer {
     /**
      * Start the RMI server and export the service.
      */
+    /**
+     * Start the RMI server and export the service.
+     */
     public void start(PeerService serviceImpl) throws Exception {
         this.service = serviceImpl;
-        this.registry = LocateRegistry.createRegistry(port);
+        try {
+            this.registry = LocateRegistry.createRegistry(port);
+        } catch (java.rmi.server.ExportException e) {
+            // Registry already exists, get it
+            this.registry = LocateRegistry.getRegistry(port);
+        }
         registry.rebind(serviceName, service);
         System.out.println("[RMI] Server started on port " + port);
     }
@@ -36,7 +44,15 @@ public class RMIServer {
     public void stop() {
         try {
             if (registry != null && serviceName != null) {
-                registry.unbind(serviceName);
+                try {
+                    registry.unbind(serviceName);
+                } catch (Exception e) {
+                    // Ignore if already unbound
+                }
+            }
+            
+            if (service != null) {
+                java.rmi.server.UnicastRemoteObject.unexportObject(service, true);
             }
         } catch (Exception e) {
             System.err.println("[RMI] Error stopping server: " + e.getMessage());

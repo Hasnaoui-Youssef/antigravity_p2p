@@ -1,6 +1,6 @@
 package p2p.peer.messaging;
 
-import p2p.common.model.DirectMessage;
+import p2p.common.model.message.DirectMessage;
 import p2p.common.model.User;
 import p2p.common.rmi.PeerService;
 import p2p.common.vectorclock.VectorClock;

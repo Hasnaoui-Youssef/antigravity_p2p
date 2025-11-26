@@ -1,8 +1,10 @@
 package p2p.peer.groups;
 
-import p2p.common.model.ElectionMessage;
 import p2p.common.model.Group;
 import p2p.common.model.User;
+import p2p.common.model.*;
+import p2p.common.model.message.*;
+import p2p.common.model.message.ElectionMessage;
 import p2p.common.rmi.PeerService;
 
 import java.rmi.registry.LocateRegistry;
@@ -115,12 +117,10 @@ public class LeaderElectionManager {
      * Handle incoming election proposal.
      */
     public void handleElectionProposal(ElectionMessage message) {
-        Optional<Group> groupOpt = groupManager.getGroup(message.getGroupId());
-        if (groupOpt.isEmpty()) {
+        Group group = groupManager.getGroup(message.getGroupId());
+        if (group == null) {
             return;
         }
-        
-        Group group = groupOpt.get();
         
         // Vote for the candidate (in this simple version, vote for first proposal)
         ElectionState state = ongoingElections.get(message.getGroupId());
@@ -155,12 +155,10 @@ public class LeaderElectionManager {
      * Handle election result announcement.
      */
     public void handleElectionResult(ElectionMessage message) {
-        Optional<Group> groupOpt = groupManager.getGroup(message.getGroupId());
-        if (groupOpt.isEmpty()) {
+        Group group = groupManager.getGroup(message.getGroupId());
+        if (group == null) {
             return;
         }
-        
-        Group group = groupOpt.get();
         Group updatedGroup = group.withNewLeader(message.getCandidateId(), message.getEpoch());
         groupManager.updateGroup(updatedGroup);
         
@@ -180,12 +178,10 @@ public class LeaderElectionManager {
             return;
         }
         
-        Optional<Group> groupOpt = groupManager.getGroup(groupId);
-        if (groupOpt.isEmpty()) {
+        Group group = groupManager.getGroup(groupId);
+        if (group == null) {
             return;
         }
-        
-        Group group = groupOpt.get();
         
         // Determine winner (candidate with most votes)
         String winner = state.getWinner();

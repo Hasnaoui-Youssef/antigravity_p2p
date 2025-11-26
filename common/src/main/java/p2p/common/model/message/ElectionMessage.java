@@ -1,4 +1,6 @@
-package p2p.common.model;
+package p2p.common.model.message;
+
+import p2p.common.model.MessageType;
 
 import java.time.Instant;
 import java.util.Objects;

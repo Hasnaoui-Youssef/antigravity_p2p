@@ -1,4 +1,6 @@
-package p2p.common.model;
+package p2p.common.model.message;
+
+import p2p.common.model.MessageType;
 
 import java.io.Serializable;
 import java.time.Instant;
