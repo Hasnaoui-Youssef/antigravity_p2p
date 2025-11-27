@@ -23,6 +23,21 @@ public class ConsensusManager {
 
     // Map of requestId -> Future to track pending sync requests
     private final Map<String, CompletableFuture<List<Message>>> pendingRequests = new ConcurrentHashMap<>();
+    
+    // Callback for sync completion notifications
+    private SyncCallback syncCallback;
+    
+    /**
+     * Callback interface for sync completion notifications.
+     */
+    public interface SyncCallback {
+        void onSyncComplete(String groupId, int messageCount);
+        void onSyncFailed(String groupId, String reason);
+    }
+    
+    public void setSyncCallback(SyncCallback callback) {
+        this.syncCallback = callback;
+    }
 
     public ConsensusManager(User localUser, GroupManager groupManager) {
         this.localUser = localUser;
@@ -37,13 +52,18 @@ public class ConsensusManager {
             try {
                 Group group = groupManager.getGroup(groupId);
                 if (group == null) {
+                    if (syncCallback != null) {
+                        syncCallback.onSyncFailed(groupId, "Group not found");
+                    }
                     return;
                 }
                 
                 List<User> quorum = selectQuorum(group);
                 
                 if (quorum.isEmpty()) {
-                    // System.out.println("[Consensus] No quorum available for group " + groupId);
+                    if (syncCallback != null) {
+                        syncCallback.onSyncFailed(groupId, "No quorum available");
+                    }
                     return;
                 }
                 
@@ -56,16 +76,30 @@ public class ConsensusManager {
                     applyMessages(groupId, mergedMessages);
                     System.out.println("[Consensus] Sync complete for group " + groupId + 
                         " - received " + mergedMessages.size() + " messages");
+                    
+                    if (syncCallback != null) {
+                        syncCallback.onSyncComplete(groupId, mergedMessages.size());
+                    }
+                } else {
+                    if (syncCallback != null) {
+                        syncCallback.onSyncComplete(groupId, 0);
+                    }
                 }
                 
             } catch (Exception e) {
                 System.err.println("[Consensus] Sync failed for group " + groupId + ": " + e.getMessage());
+                if (syncCallback != null) {
+                    syncCallback.onSyncFailed(groupId, e.getMessage());
+                }
             }
         });
     }
 
     /**
      * Select quorum members (N/2 + 1).
+     * For small groups (3 members), we need special handling:
+     * - If we exclude the leader and ourselves, only 1 member remains
+     * - In this case, we query that single member
      */
     private List<User> selectQuorum(Group group) {
         List<User> members = group.getMembers().stream()
@@ -74,11 +108,22 @@ public class ConsensusManager {
         
         if (members.isEmpty()) return Collections.emptyList();
         
-        int quorumSize = (members.size() / 2) + 1;
+        // Total = members (excluding leader) + 1 for leader
+        // Note: group.getMembers() excludes leader by design
+        int totalGroupSize = group.getMembers().size() + 1;
+        int quorumSize;
         
-        // Return up to quorumSize members
+        if (totalGroupSize <= 3) {
+            // Small group: query all available members (at least 1)
+            quorumSize = members.size();
+        } else {
+            quorumSize = (members.size() / 2) + 1;
+        }
+        
+        // Return up to quorumSize members, but never more than available
+        int limit = Math.min(members.size(), Math.max(1, quorumSize));
         return members.stream()
-            .limit(quorumSize)
+            .limit(limit)
             .collect(Collectors.toList());
     }
 
@@ -182,9 +227,7 @@ public class ConsensusManager {
      * Apply merged messages to local state.
      */
     private void applyMessages(String groupId, List<Message> messages) {
-        for (Message msg : messages) {
-            groupManager.addMessage(groupId, msg);
-        }
+        groupManager.addMessages(groupId, messages);
     }
 
     /**

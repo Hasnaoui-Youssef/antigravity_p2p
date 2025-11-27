@@ -71,11 +71,12 @@ public class PeerController {
         this.consensusManager = new ConsensusManager(localUser, groupManager);
         this.gossipManager.setConsensusManager(consensusManager);
         
-        // Create leader election manager
+        // Create leader election manager and wire it to gossip manager
         LeaderElectionManager electionManager = new LeaderElectionManager(localUser, groupManager);
+        electionManager.setGossipManager(gossipManager);
         this.groupManager.setElectionManager(electionManager);
         
-        // Start RMI server
+        // Create RMI server with peer service
         PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager);
         peerService.setElectionManager(electionManager);
         this.rmiServer = new RMIServer(rmiPort, "PeerService");
@@ -89,9 +90,12 @@ public class PeerController {
         Registry registry = LocateRegistry.getRegistry(bootstrapHost, bootstrapPort);
         this.bootstrapService = (BootstrapService) registry.lookup("BootstrapService");
         
-        // Store election manager for lifecycle management
+        // Store for lifecycle management
         this.electionManager = electionManager;
+        this.peerService = peerService;
     }
+    
+    private PeerServiceImpl peerService;
     
     /**
      * Starts the peer (RMI server, heartbeat).
@@ -101,7 +105,7 @@ public class PeerController {
             throw new IllegalStateException("Peer already started");
         }
         
-        rmiServer.start(new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager));
+        rmiServer.start(peerService);  // Use the pre-configured instance
         heartbeatThread.start();
         bootstrapService.register(localUser);
         gossipManager.start();
@@ -340,5 +344,105 @@ public class PeerController {
         PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager);
         peerService.setElectionManager(electionManager);
         rmiServer.start(peerService);
+    }
+    
+    /**
+     * Sets a callback for sync completion events.
+     * Used by tests to wait for sync operations to complete.
+     */
+    public void setSyncCallback(ConsensusManager.SyncCallback callback) {
+        consensusManager.setSyncCallback(callback);
+    }
+    
+    /**
+     * Gets the consensus manager for testing purposes.
+     */
+    public ConsensusManager getConsensusManager() {
+        return consensusManager;
+    }
+    
+    /**
+     * Waits for messages to be synced to the group, with polling and timeout.
+     * Returns true if the expected message count was reached, false if timeout.
+     *
+     * @param groupId The group ID to check
+     * @param expectedMessageCount The minimum number of messages to wait for
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param pollIntervalMs Time between checks in milliseconds
+     * @return true if messages synced, false if timeout
+     */
+    public boolean waitForMessages(String groupId, int expectedMessageCount, long timeoutMs, long pollIntervalMs) {
+        long startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            int messageCount = groupManager.getMessages(groupId).size();
+            if (messageCount >= expectedMessageCount) {
+                return true;
+            }
+            try {
+                Thread.sleep(pollIntervalMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Waits for a group to be created/received, with polling and timeout.
+     * Returns true if the group exists, false if timeout.
+     *
+     * @param groupId The group ID to wait for (or null to wait for any group)
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param pollIntervalMs Time between checks in milliseconds
+     * @return true if group found, false if timeout
+     */
+    public boolean waitForGroup(String groupId, long timeoutMs, long pollIntervalMs) {
+        long startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            if (groupId != null) {
+                if (groupManager.getGroup(groupId) != null) {
+                    return true;
+                }
+            } else {
+                if (!groupManager.getGroups().isEmpty()) {
+                    return true;
+                }
+            }
+            try {
+                Thread.sleep(pollIntervalMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Waits for election to complete and a new leader to be elected.
+     * Returns true if new leader differs from old leader, false if timeout.
+     *
+     * @param groupId The group ID
+     * @param oldLeaderId The previous leader's ID
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param pollIntervalMs Time between checks in milliseconds
+     * @return true if new leader elected, false if timeout
+     */
+    public boolean waitForNewLeader(String groupId, String oldLeaderId, long timeoutMs, long pollIntervalMs) {
+        long startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            Group group = groupManager.getGroup(groupId);
+            if (group != null && !group.getLeaderId().equals(oldLeaderId)) {
+                return true;
+            }
+            try {
+                Thread.sleep(pollIntervalMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
     }
 }
