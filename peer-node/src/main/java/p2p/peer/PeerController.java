@@ -345,4 +345,104 @@ public class PeerController {
         peerService.setElectionManager(electionManager);
         rmiServer.start(peerService);
     }
+    
+    /**
+     * Sets a callback for sync completion events.
+     * Used by tests to wait for sync operations to complete.
+     */
+    public void setSyncCallback(ConsensusManager.SyncCallback callback) {
+        consensusManager.setSyncCallback(callback);
+    }
+    
+    /**
+     * Gets the consensus manager for testing purposes.
+     */
+    public ConsensusManager getConsensusManager() {
+        return consensusManager;
+    }
+    
+    /**
+     * Waits for messages to be synced to the group, with polling and timeout.
+     * Returns true if the expected message count was reached, false if timeout.
+     *
+     * @param groupId The group ID to check
+     * @param expectedMessageCount The minimum number of messages to wait for
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param pollIntervalMs Time between checks in milliseconds
+     * @return true if messages synced, false if timeout
+     */
+    public boolean waitForMessages(String groupId, int expectedMessageCount, long timeoutMs, long pollIntervalMs) {
+        long startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            int messageCount = groupManager.getMessages(groupId).size();
+            if (messageCount >= expectedMessageCount) {
+                return true;
+            }
+            try {
+                Thread.sleep(pollIntervalMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Waits for a group to be created/received, with polling and timeout.
+     * Returns true if the group exists, false if timeout.
+     *
+     * @param groupId The group ID to wait for (or null to wait for any group)
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param pollIntervalMs Time between checks in milliseconds
+     * @return true if group found, false if timeout
+     */
+    public boolean waitForGroup(String groupId, long timeoutMs, long pollIntervalMs) {
+        long startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            if (groupId != null) {
+                if (groupManager.getGroup(groupId) != null) {
+                    return true;
+                }
+            } else {
+                if (!groupManager.getGroups().isEmpty()) {
+                    return true;
+                }
+            }
+            try {
+                Thread.sleep(pollIntervalMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Waits for election to complete and a new leader to be elected.
+     * Returns true if new leader differs from old leader, false if timeout.
+     *
+     * @param groupId The group ID
+     * @param oldLeaderId The previous leader's ID
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param pollIntervalMs Time between checks in milliseconds
+     * @return true if new leader elected, false if timeout
+     */
+    public boolean waitForNewLeader(String groupId, String oldLeaderId, long timeoutMs, long pollIntervalMs) {
+        long startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            Group group = groupManager.getGroup(groupId);
+            if (group != null && !group.getLeaderId().equals(oldLeaderId)) {
+                return true;
+            }
+            try {
+                Thread.sleep(pollIntervalMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
 }

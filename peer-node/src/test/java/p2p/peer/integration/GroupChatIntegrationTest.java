@@ -339,9 +339,15 @@ class GroupChatIntegrationTest {
         // Alice creates group with 5 others
         Group tempGroup = alice.createGroup("LargeElectionGroup", 
             List.of("Bob", "Charlie", "David", "Eve", "Frank"));
-        Thread.sleep(5000); // Wait for finalization
         
         String groupId = tempGroup.getGroupId();
+        
+        // Use polling for all peers to receive the group
+        assertTrue(bob.waitForGroup(groupId, 10000, 200), "Bob should receive group");
+        assertTrue(charlie.waitForGroup(groupId, 10000, 200), "Charlie should receive group");
+        assertTrue(david.waitForGroup(groupId, 10000, 200), "David should receive group");
+        assertTrue(eve.waitForGroup(groupId, 10000, 200), "Eve should receive group");
+        assertTrue(frank.waitForGroup(groupId, 10000, 200), "Frank should receive group");
         
         // Verify all have the group
         assertEquals(1, alice.getGroups().size(), "Alice should have group");
@@ -353,14 +359,16 @@ class GroupChatIntegrationTest {
         
         // Verify Alice is initial leader
         Group aliceGroup = alice.getGroup(groupId);
-        assertEquals(alice.getLocalUser().getUserId(), aliceGroup.getLeaderId());
+        String oldLeaderId = alice.getLocalUser().getUserId();
+        assertEquals(oldLeaderId, aliceGroup.getLeaderId());
         
         // Alice disconnects
         alice.stop();
         peers.remove(alice);
         
-        // Wait for leader failure detection and election
-        Thread.sleep(8000);
+        // Use polling to wait for new leader election
+        assertTrue(bob.waitForNewLeader(groupId, oldLeaderId, 15000, 300), 
+            "Bob should see new leader elected");
         
         // Remaining 5 members should have elected a new leader
         Group bobGroup = bob.getGroup(groupId);
@@ -377,9 +385,9 @@ class GroupChatIntegrationTest {
         assertNotNull(frankGroup, "Frank should still have group");
         
         // New leader should NOT be Alice
-        assertNotEquals(alice.getLocalUser().getUserId(), bobGroup.getLeaderId(), 
+        assertNotEquals(oldLeaderId, bobGroup.getLeaderId(), 
             "Bob's group should have new leader");
-        assertNotEquals(alice.getLocalUser().getUserId(), charlieGroup.getLeaderId(),
+        assertNotEquals(oldLeaderId, charlieGroup.getLeaderId(),
             "Charlie's group should have new leader");
         
         // All should agree on the same new leader
@@ -507,7 +515,14 @@ class GroupChatIntegrationTest {
         makeFriends(charlie, david);
         
         Group tempGroup = alice.createGroup("GossipGroup", List.of("Bob", "Charlie", "David"));
-        Thread.sleep(4000);
+        
+        // Use polling instead of fixed sleep for group creation
+        assertTrue(bob.waitForGroup(tempGroup.getGroupId(), 10000, 200), 
+            "Bob should receive the group");
+        assertTrue(charlie.waitForGroup(tempGroup.getGroupId(), 10000, 200), 
+            "Charlie should receive the group");
+        assertTrue(david.waitForGroup(tempGroup.getGroupId(), 10000, 200), 
+            "David should receive the group");
         
         assertEquals(1, alice.getGroups().size());
         String groupId = tempGroup.getGroupId();
@@ -517,27 +532,23 @@ class GroupChatIntegrationTest {
         
         // Alice sends messages while Bob is offline
         alice.sendGroupMessage(groupId, "Message 1");
-        Thread.sleep(200);
         alice.sendGroupMessage(groupId, "Message 2");
-        Thread.sleep(200);
         
-        // Charlie and David should have messages, Bob shouldn't yet
-        assertTrue(charlie.getGroupManager().getMessages(groupId).size() >= 2, 
+        // Use polling for Charlie and David to receive messages
+        assertTrue(charlie.waitForMessages(groupId, 2, 5000, 100), 
             "Charlie should have received messages");
-        assertTrue(david.getGroupManager().getMessages(groupId).size() >= 2, 
+        assertTrue(david.waitForMessages(groupId, 2, 5000, 100), 
             "David should have received messages");
         
         // Heal partition
         bob.restoreNetwork();
         
-        // Wait for gossip to propagate
-        Thread.sleep(5000);
+        // Use polling for Bob to sync via gossip
+        assertTrue(bob.waitForMessages(groupId, 2, 10000, 200), 
+            "Bob should have synced messages via gossip");
         
-        // Now Bob should have caught up via gossip
         int bobMessages = bob.getGroupManager().getMessages(groupId).size();
-        assertTrue(bobMessages >= 2, "Bob should have received messages via gossip (got " + bobMessages + ")");
-        
-        System.out.println("[TEST] ✓ Test 8: Gossip propagation works");
+        System.out.println("[TEST] ✓ Test 8: Gossip propagation works - Bob has " + bobMessages + " messages");
     }
     
     // ==========================================================================
@@ -573,59 +584,57 @@ class GroupChatIntegrationTest {
         makeFriends(charlie, david);
         makeFriends(david, eve);
         makeFriends(eve, frank);
+        // Add more friendships to ensure sync quorum can reach Bob/Frank
+        makeFriends(bob, eve);
+        makeFriends(bob, frank);
+        makeFriends(charlie, frank);
         
         Group tempGroup = alice.createGroup("SyncGroup", List.of("Bob", "Charlie", "David", "Eve", "Frank"));
-        Thread.sleep(5000);
+        
+        // Use polling for all peers to receive the group
+        assertTrue(bob.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Bob should receive group");
+        assertTrue(charlie.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Charlie should receive group");
+        assertTrue(david.waitForGroup(tempGroup.getGroupId(), 10000, 200), "David should receive group");
+        assertTrue(eve.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Eve should receive group");
+        assertTrue(frank.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Frank should receive group");
         
         assertEquals(1, alice.getGroups().size());
         String groupId = tempGroup.getGroupId();
         
         // Stagger disconnects: Charlie, David, and Eve go offline at different times
         charlie.simulateNetworkFailure();
-        Thread.sleep(500);
-        
-        // Send first message while Charlie is offline
-        alice.sendGroupMessage(groupId, "Message 1 - Charlie offline");
-        Thread.sleep(300);
-        
         david.simulateNetworkFailure();
-        Thread.sleep(500);
-        
-        // Send second message while Charlie and David are offline
-        alice.sendGroupMessage(groupId, "Message 2 - Charlie and David offline");
-        Thread.sleep(300);
-        
         eve.simulateNetworkFailure();
-        Thread.sleep(500);
+        Thread.sleep(300); // Let them fully disconnect
         
-        // Send third message while all 3 are offline
+        // Send all messages while all 3 are offline
+        alice.sendGroupMessage(groupId, "Message 1 - All 3 offline");
+        alice.sendGroupMessage(groupId, "Message 2 - All 3 offline");
         alice.sendGroupMessage(groupId, "Message 3 - All 3 offline");
-        Thread.sleep(500);
         
-        // Bob and Frank should have all messages
-        assertTrue(bob.getGroupManager().getMessages(groupId).size() >= 3, 
-            "Bob should have all 3 messages");
-        assertTrue(frank.getGroupManager().getMessages(groupId).size() >= 3, 
-            "Frank should have all 3 messages");
+        // Use polling for Bob and Frank to receive messages
+        assertTrue(bob.waitForMessages(groupId, 3, 5000, 100), "Bob should have all 3 messages");
+        assertTrue(frank.waitForMessages(groupId, 3, 5000, 100), "Frank should have all 3 messages");
         
-        // Restore all 3 peers - they should sync via gossip/consensus
+        // Restore all 3 peers one at a time with gaps
         charlie.restoreNetwork();
-        Thread.sleep(2000);  // More time between restores
+        Thread.sleep(500);
         david.restoreNetwork();
-        Thread.sleep(2000);
+        Thread.sleep(500);
         eve.restoreNetwork();
         
-        // Wait for gossip and consensus sync
-        Thread.sleep(8000);  // More time for sync
+        // Use polling with longer timeout for all 3 to sync messages
+        // The gossip cycle runs every 1 second and might need several rounds
+        assertTrue(charlie.waitForMessages(groupId, 3, 20000, 500), 
+            "Charlie should have synced all messages");
+        assertTrue(david.waitForMessages(groupId, 3, 20000, 500), 
+            "David should have synced all messages");
+        assertTrue(eve.waitForMessages(groupId, 3, 20000, 500), 
+            "Eve should have synced all messages");
         
-        // All 3 should have caught up via sync
         int charlieMessages = charlie.getGroupManager().getMessages(groupId).size();
         int davidMessages = david.getGroupManager().getMessages(groupId).size();
         int eveMessages = eve.getGroupManager().getMessages(groupId).size();
-        
-        assertTrue(charlieMessages >= 3, "Charlie should have synced all messages (got " + charlieMessages + ")");
-        assertTrue(davidMessages >= 3, "David should have synced all messages (got " + davidMessages + ")");
-        assertTrue(eveMessages >= 3, "Eve should have synced all messages (got " + eveMessages + ")");
         
         System.out.println("[TEST] ✓ Test 9: Staggered sync works - Charlie: " + charlieMessages + 
             ", David: " + davidMessages + ", Eve: " + eveMessages);

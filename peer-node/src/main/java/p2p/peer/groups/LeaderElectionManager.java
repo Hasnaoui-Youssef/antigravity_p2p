@@ -464,8 +464,10 @@ public class LeaderElectionManager {
         }
         
         boolean hasQuorum(Group group) {
-            int groupSize = group.getMembers().size() + 1; // members + leader
-            int quorum = (groupSize / 2) + 1;
+            // Election happens when leader fails, so we should NOT count the leader
+            // Only count members (excluding the failed leader)
+            int activeMembers = group.getMembers().size();  // Members only, no leader
+            int quorum = (activeMembers / 2) + 1;
             
             // Count votes for our candidate
             long votesForCandidate = votes.values().stream()

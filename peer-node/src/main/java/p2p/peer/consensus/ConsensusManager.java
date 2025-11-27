@@ -23,6 +23,21 @@ public class ConsensusManager {
 
     // Map of requestId -> Future to track pending sync requests
     private final Map<String, CompletableFuture<List<Message>>> pendingRequests = new ConcurrentHashMap<>();
+    
+    // Callback for sync completion notifications
+    private SyncCallback syncCallback;
+    
+    /**
+     * Callback interface for sync completion notifications.
+     */
+    public interface SyncCallback {
+        void onSyncComplete(String groupId, int messageCount);
+        void onSyncFailed(String groupId, String reason);
+    }
+    
+    public void setSyncCallback(SyncCallback callback) {
+        this.syncCallback = callback;
+    }
 
     public ConsensusManager(User localUser, GroupManager groupManager) {
         this.localUser = localUser;
@@ -37,13 +52,18 @@ public class ConsensusManager {
             try {
                 Group group = groupManager.getGroup(groupId);
                 if (group == null) {
+                    if (syncCallback != null) {
+                        syncCallback.onSyncFailed(groupId, "Group not found");
+                    }
                     return;
                 }
                 
                 List<User> quorum = selectQuorum(group);
                 
                 if (quorum.isEmpty()) {
-                    // System.out.println("[Consensus] No quorum available for group " + groupId);
+                    if (syncCallback != null) {
+                        syncCallback.onSyncFailed(groupId, "No quorum available");
+                    }
                     return;
                 }
                 
@@ -56,10 +76,21 @@ public class ConsensusManager {
                     applyMessages(groupId, mergedMessages);
                     System.out.println("[Consensus] Sync complete for group " + groupId + 
                         " - received " + mergedMessages.size() + " messages");
+                    
+                    if (syncCallback != null) {
+                        syncCallback.onSyncComplete(groupId, mergedMessages.size());
+                    }
+                } else {
+                    if (syncCallback != null) {
+                        syncCallback.onSyncComplete(groupId, 0);
+                    }
                 }
                 
             } catch (Exception e) {
                 System.err.println("[Consensus] Sync failed for group " + groupId + ": " + e.getMessage());
+                if (syncCallback != null) {
+                    syncCallback.onSyncFailed(groupId, e.getMessage());
+                }
             }
         });
     }
