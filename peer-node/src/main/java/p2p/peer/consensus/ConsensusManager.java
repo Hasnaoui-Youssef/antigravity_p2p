@@ -77,9 +77,9 @@ public class ConsensusManager {
         
         if (members.isEmpty()) return Collections.emptyList();
         
-        // For groups of 3, if we only have 1 other member available, use them
-        // Total = members + leader = members.size() + 1 (original size before filtering)
-        int totalGroupSize = group.getMembers().size() + 1; // +1 for leader
+        // Total = members (excluding leader) + 1 for leader
+        // Note: group.getMembers() excludes leader by design
+        int totalGroupSize = group.getMembers().size() + 1;
         int quorumSize;
         
         if (totalGroupSize <= 3) {
@@ -89,9 +89,10 @@ public class ConsensusManager {
             quorumSize = (members.size() / 2) + 1;
         }
         
-        // Return up to quorumSize members
+        // Return up to quorumSize members, but never more than available
+        int limit = Math.min(members.size(), Math.max(1, quorumSize));
         return members.stream()
-            .limit(Math.max(1, quorumSize))
+            .limit(limit)
             .collect(Collectors.toList());
     }
 
