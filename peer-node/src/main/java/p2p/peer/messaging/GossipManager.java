@@ -140,11 +140,10 @@ public class GossipManager {
                     .findFirst()
                     .orElseThrow();
                 
-                // Build leader liveness map for all groups
+                // Build leader liveness map ONLY for groups both we and the target share
+                // (i.e., only the current group being gossiped about)
                 Map<String, Long> leaderLiveness = new HashMap<>();
-                for (Group g : groups) {
-                    leaderLiveness.put(g.getGroupId(), getLeaderLastSeen(g.getGroupId()));
-                }
+                leaderLiveness.put(group.getGroupId(), getLeaderLastSeen(group.getGroupId()));
                 
                 // Create gossip message with leader liveness piggyback
                 GossipMessage gossip = GossipMessage.create(

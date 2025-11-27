@@ -389,7 +389,30 @@ public class GroupManager {
      * Adds a message to the group history.
      */
     public void addMessage(String groupId, Message message) {
-        groupMessages.computeIfAbsent(groupId, k -> new ArrayList<>()).add(message);
+        List<Message> messages = groupMessages.computeIfAbsent(groupId, k -> new ArrayList<>());
+        // Check for duplicates by message ID
+        boolean exists = messages.stream()
+            .anyMatch(m -> m.getMessageId().equals(message.getMessageId()));
+        if (!exists) {
+            messages.add(message);
+        }
+    }
+    
+    /**
+     * Adds multiple messages to the group history, filtering out duplicates.
+     */
+    public void addMessages(String groupId, List<Message> newMessages) {
+        List<Message> messages = groupMessages.computeIfAbsent(groupId, k -> new ArrayList<>());
+        Set<String> existingIds = messages.stream()
+            .map(Message::getMessageId)
+            .collect(Collectors.toSet());
+        
+        for (Message msg : newMessages) {
+            if (!existingIds.contains(msg.getMessageId())) {
+                messages.add(msg);
+                existingIds.add(msg.getMessageId());
+            }
+        }
     }
 
     /**

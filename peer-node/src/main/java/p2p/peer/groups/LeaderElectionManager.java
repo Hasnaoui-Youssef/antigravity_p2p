@@ -57,10 +57,28 @@ public class LeaderElectionManager {
     
     /**
      * Record activity from group leader (for gossip propagation).
+     * If we have an ongoing election and the leader shows activity, cancel the election.
      */
     public void recordLeaderActivity(String groupId) {
         if (gossipManager != null) {
             gossipManager.recordLeaderActivity(groupId);
+        }
+        
+        // If there's an ongoing election and leader is now active, cancel election
+        ElectionState state = ongoingElections.get(groupId);
+        if (state != null) {
+            Group group = groupManager.getGroup(groupId);
+            if (group != null) {
+                // Leader is still alive - cancel the election
+                System.out.println("[Election] Leader activity detected for group " + group.getName() + 
+                    " - cancelling election (epoch " + state.epoch + ")");
+                ongoingElections.remove(groupId);
+                
+                // Clear the failure tracking so we don't re-trigger immediately
+                if (gossipManager != null) {
+                    gossipManager.clearFailureTracking(groupId);
+                }
+            }
         }
     }
     

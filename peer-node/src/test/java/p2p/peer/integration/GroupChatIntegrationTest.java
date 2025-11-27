@@ -486,21 +486,27 @@ class GroupChatIntegrationTest {
     // ==========================================================================
     
     @Test
-    @DisplayName("11. Gossip syncs messages after network partition heals")
+    @DisplayName("8. Gossip syncs messages after network partition heals")
     void testGossipPropagation() throws Exception {
+        // Use 4 members to avoid auto-dissolution when one goes offline
         PeerController alice = createPeer("Alice", getNextPort());
         PeerController bob = createPeer("Bob", getNextPort());
         PeerController charlie = createPeer("Charlie", getNextPort());
+        PeerController david = createPeer("David", getNextPort());
         
         alice.setInvitationHandler(request -> true);
         bob.setInvitationHandler(request -> true);
         charlie.setInvitationHandler(request -> true);
+        david.setInvitationHandler(request -> true);
         
         makeFriends(alice, bob);
         makeFriends(alice, charlie);
+        makeFriends(alice, david);
         makeFriends(bob, charlie);
+        makeFriends(bob, david);
+        makeFriends(charlie, david);
         
-        Group tempGroup = alice.createGroup("GossipGroup", List.of("Bob", "Charlie"));
+        Group tempGroup = alice.createGroup("GossipGroup", List.of("Bob", "Charlie", "David"));
         Thread.sleep(4000);
         
         assertEquals(1, alice.getGroups().size());
@@ -515,8 +521,11 @@ class GroupChatIntegrationTest {
         alice.sendGroupMessage(groupId, "Message 2");
         Thread.sleep(200);
         
-        // Charlie should have messages, Bob shouldn't yet
-        assertTrue(charlie.getGroupManager().getMessages(groupId).size() >= 2);
+        // Charlie and David should have messages, Bob shouldn't yet
+        assertTrue(charlie.getGroupManager().getMessages(groupId).size() >= 2, 
+            "Charlie should have received messages");
+        assertTrue(david.getGroupManager().getMessages(groupId).size() >= 2, 
+            "David should have received messages");
         
         // Heal partition
         bob.restoreNetwork();
@@ -528,54 +537,98 @@ class GroupChatIntegrationTest {
         int bobMessages = bob.getGroupManager().getMessages(groupId).size();
         assertTrue(bobMessages >= 2, "Bob should have received messages via gossip (got " + bobMessages + ")");
         
-        System.out.println("[TEST] ✓ Test 7: Gossip propagation works");
+        System.out.println("[TEST] ✓ Test 8: Gossip propagation works");
     }
     
     // ==========================================================================
-    // TEST 9: Consensus-based sync for late joiner
+    // TEST 9: Consensus-based sync for multiple late joiners
     // ==========================================================================
     
     @Test
-    @DisplayName("11. Late peer syncs missing messages via consensus")
+    @DisplayName("9. Multiple peers sync missing messages after staggered disconnects")
     void testConsensusSync() throws Exception {
+        // Create 6 peers
         PeerController alice = createPeer("Alice", getNextPort());
         PeerController bob = createPeer("Bob", getNextPort());
         PeerController charlie = createPeer("Charlie", getNextPort());
+        PeerController david = createPeer("David", getNextPort());
+        PeerController eve = createPeer("Eve", getNextPort());
+        PeerController frank = createPeer("Frank", getNextPort());
         
         alice.setInvitationHandler(request -> true);
         bob.setInvitationHandler(request -> true);
         charlie.setInvitationHandler(request -> true);
+        david.setInvitationHandler(request -> true);
+        eve.setInvitationHandler(request -> true);
+        frank.setInvitationHandler(request -> true);
         
+        // Create friendships
         makeFriends(alice, bob);
         makeFriends(alice, charlie);
+        makeFriends(alice, david);
+        makeFriends(alice, eve);
+        makeFriends(alice, frank);
         makeFriends(bob, charlie);
+        makeFriends(bob, david);
+        makeFriends(charlie, david);
+        makeFriends(david, eve);
+        makeFriends(eve, frank);
         
-        Group tempGroup = alice.createGroup("SyncGroup", List.of("Bob", "Charlie"));
-        Thread.sleep(4000);
+        Group tempGroup = alice.createGroup("SyncGroup", List.of("Bob", "Charlie", "David", "Eve", "Frank"));
+        Thread.sleep(5000);
         
         assertEquals(1, alice.getGroups().size());
         String groupId = tempGroup.getGroupId();
         
-        // Charlie goes offline
+        // Stagger disconnects: Charlie, David, and Eve go offline at different times
         charlie.simulateNetworkFailure();
+        Thread.sleep(500);
         
-        // Send messages while Charlie is offline
-        alice.sendGroupMessage(groupId, "Sync message 1");
-        Thread.sleep(200);
-        alice.sendGroupMessage(groupId, "Sync message 2");
-        Thread.sleep(200);
+        // Send first message while Charlie is offline
+        alice.sendGroupMessage(groupId, "Message 1 - Charlie offline");
+        Thread.sleep(300);
         
-        // Charlie comes back
+        david.simulateNetworkFailure();
+        Thread.sleep(500);
+        
+        // Send second message while Charlie and David are offline
+        alice.sendGroupMessage(groupId, "Message 2 - Charlie and David offline");
+        Thread.sleep(300);
+        
+        eve.simulateNetworkFailure();
+        Thread.sleep(500);
+        
+        // Send third message while all 3 are offline
+        alice.sendGroupMessage(groupId, "Message 3 - All 3 offline");
+        Thread.sleep(500);
+        
+        // Bob and Frank should have all messages
+        assertTrue(bob.getGroupManager().getMessages(groupId).size() >= 3, 
+            "Bob should have all 3 messages");
+        assertTrue(frank.getGroupManager().getMessages(groupId).size() >= 3, 
+            "Frank should have all 3 messages");
+        
+        // Restore all 3 peers - they should sync via gossip/consensus
         charlie.restoreNetwork();
+        Thread.sleep(2000);  // More time between restores
+        david.restoreNetwork();
+        Thread.sleep(2000);
+        eve.restoreNetwork();
         
-        // Wait for consensus sync
-        Thread.sleep(5000);
+        // Wait for gossip and consensus sync
+        Thread.sleep(8000);  // More time for sync
         
-        // Charlie should have synced messages
+        // All 3 should have caught up via sync
         int charlieMessages = charlie.getGroupManager().getMessages(groupId).size();
-        assertTrue(charlieMessages >= 2, "Charlie should have synced messages (got " + charlieMessages + ")");
+        int davidMessages = david.getGroupManager().getMessages(groupId).size();
+        int eveMessages = eve.getGroupManager().getMessages(groupId).size();
         
-        System.out.println("[TEST] ✓ Test 11: Consensus sync works");
+        assertTrue(charlieMessages >= 3, "Charlie should have synced all messages (got " + charlieMessages + ")");
+        assertTrue(davidMessages >= 3, "David should have synced all messages (got " + davidMessages + ")");
+        assertTrue(eveMessages >= 3, "Eve should have synced all messages (got " + eveMessages + ")");
+        
+        System.out.println("[TEST] ✓ Test 9: Staggered sync works - Charlie: " + charlieMessages + 
+            ", David: " + davidMessages + ", Eve: " + eveMessages);
     }
     
     // ==========================================================================

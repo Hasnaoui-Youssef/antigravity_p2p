@@ -66,6 +66,9 @@ public class ConsensusManager {
 
     /**
      * Select quorum members (N/2 + 1).
+     * For small groups (3 members), we need special handling:
+     * - If we exclude the leader and ourselves, only 1 member remains
+     * - In this case, we query that single member
      */
     private List<User> selectQuorum(Group group) {
         List<User> members = group.getMembers().stream()
@@ -74,11 +77,21 @@ public class ConsensusManager {
         
         if (members.isEmpty()) return Collections.emptyList();
         
-        int quorumSize = (members.size() / 2) + 1;
+        // For groups of 3, if we only have 1 other member available, use them
+        // Total = members + leader = members.size() + 1 (original size before filtering)
+        int totalGroupSize = group.getMembers().size() + 1; // +1 for leader
+        int quorumSize;
+        
+        if (totalGroupSize <= 3) {
+            // Small group: query all available members (at least 1)
+            quorumSize = members.size();
+        } else {
+            quorumSize = (members.size() / 2) + 1;
+        }
         
         // Return up to quorumSize members
         return members.stream()
-            .limit(quorumSize)
+            .limit(Math.max(1, quorumSize))
             .collect(Collectors.toList());
     }
 
@@ -182,9 +195,7 @@ public class ConsensusManager {
      * Apply merged messages to local state.
      */
     private void applyMessages(String groupId, List<Message> messages) {
-        for (Message msg : messages) {
-            groupManager.addMessage(groupId, msg);
-        }
+        groupManager.addMessages(groupId, messages);
     }
 
     /**
