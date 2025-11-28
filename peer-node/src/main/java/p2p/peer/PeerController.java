@@ -21,16 +21,16 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Programmatic peer controller for testing.
  * Provides API access to peer functionality without terminal UI.
  * 
- * @apiNote This class is designed for integration testing and automated scenarios.
+ * @apiNote This class is designed for integration testing and automated
+ *          scenarios.
  */
 public class PeerController {
-    
+
     private final User localUser;
     private final VectorClock vectorClock;
     private final FriendManager friendManager;
@@ -42,91 +42,85 @@ public class PeerController {
     private final RMIServer rmiServer;
     private final HeartbeatSender heartbeatSender;
     private final Thread heartbeatThread;
-    
+
     private BootstrapService bootstrapService;
-    private boolean started = false;
-    
+    private volatile boolean started = false;
+
     /**
      * Creates a new peer controller.
      * 
-     * @param username Peer username
-     * @param rmiPort RMI port for this peer
+     * @param username      Peer username
+     * @param rmiPort       RMI port for this peer
      * @param bootstrapHost Bootstrap server hostname
      * @param bootstrapPort Bootstrap server RMI port
+     * @param udpPort       Bootstrap server UDP port for heartbeats
      */
-    public PeerController(String username, int rmiPort, String bootstrapHost, int bootstrapPort) throws Exception {
-        // Create local user
+    public PeerController(String username, int rmiPort, String bootstrapHost, int bootstrapPort, int udpPort)
+            throws Exception {
         String localIp = InetAddress.getLocalHost().getHostAddress();
         this.localUser = User.create(username, localIp, rmiPort);
-        
-        // Initialize vector clock
+
         this.vectorClock = new VectorClock();
         this.vectorClock.increment(localUser.getUserId());
-        
-        // Create subsystems
+
         this.friendManager = new FriendManager(localUser, vectorClock);
         this.groupManager = new GroupManager(localUser, vectorClock, friendManager);
         this.messageHandler = new MessageHandler(localUser, vectorClock, friendManager);
         this.gossipManager = new GossipManager(localUser, groupManager);
         this.consensusManager = new ConsensusManager(localUser, groupManager);
         this.gossipManager.setConsensusManager(consensusManager);
-        
-        // Create leader election manager and wire it to gossip manager
+
         LeaderElectionManager electionManager = new LeaderElectionManager(localUser, groupManager);
         electionManager.setGossipManager(gossipManager);
         this.groupManager.setElectionManager(electionManager);
-        
-        // Create RMI server with peer service
-        PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager);
+
+        peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler,
+                groupManager, gossipManager, consensusManager);
         peerService.setElectionManager(electionManager);
         this.rmiServer = new RMIServer(rmiPort, "PeerService");
-        
-        // Create heartbeat sender
-        this.heartbeatSender = new HeartbeatSender(localUser, bootstrapHost, 9876);
+
+        this.heartbeatSender = new HeartbeatSender(localUser, bootstrapHost, udpPort);
         this.heartbeatThread = new Thread(heartbeatSender, "HeartbeatSender");
         this.heartbeatThread.setDaemon(true);
-        
-        // Connect to bootstrap
+
         Registry registry = LocateRegistry.getRegistry(bootstrapHost, bootstrapPort);
         this.bootstrapService = (BootstrapService) registry.lookup("BootstrapService");
-        
-        // Store for lifecycle management
+
         this.electionManager = electionManager;
-        this.peerService = peerService;
     }
-    
+
     private PeerServiceImpl peerService;
-    
+
     /**
      * Starts the peer (RMI server, heartbeat).
      */
-    public void start() throws Exception {
+    public synchronized void start() throws Exception {
         if (started) {
             throw new IllegalStateException("Peer already started");
         }
-        
-        rmiServer.start(peerService);  // Use the pre-configured instance
+
+        rmiServer.start(peerService); // Use the pre-configured instance
         heartbeatThread.start();
         bootstrapService.register(localUser);
         gossipManager.start();
         electionManager.start();
-        
+
         started = true;
     }
-    
+
     /**
      * Stops the peer and cleans up resources.
      */
-    public void stop() throws Exception {
+    public synchronized void stop() throws Exception {
         if (!started) {
             return;
         }
-        
+
         electionManager.stop();
         gossipManager.stop();
         heartbeatSender.stop();
         heartbeatThread.interrupt();
-        
+
         if (bootstrapService != null) {
             try {
                 bootstrapService.unregister(localUser.getUserId());
@@ -134,20 +128,26 @@ public class PeerController {
                 // Ignore
             }
         }
-        
+
         rmiServer.stop();
         started = false;
     }
-    
-    // ========== Testing API ==========
-    
+
+    public void login() throws Exception {
+        bootstrapService.register(localUser);
+    }
+
+    public void logout() throws Exception {
+        bootstrapService.unregister(localUser.getUserId());
+    }
+
     /**
      * Searches for users by username.
      */
     public List<User> searchUsers(String username) throws Exception {
         return bootstrapService.searchByUsername(username);
     }
-    
+
     /**
      * Sends a friend request to another user.
      */
@@ -158,19 +158,21 @@ public class PeerController {
         }
         friendManager.sendFriendRequest(users.get(0));
     }
-    
+
     /**
      * Accepts a pending friend request.
      */
     public void acceptFriendRequest(String username) throws Exception {
-        User requester = friendManager.getPendingRequests().stream()
-            .filter(u -> u.getUsername().equalsIgnoreCase(username))
-            .findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("No pending request from: " + username));
-        
-        friendManager.acceptFriendRequest(requester);
+        friendManager.acceptFriendRequest(username);
     }
-    
+
+    /**
+     * Rejects a pending friend request.
+     */
+    public void rejectFriendRequest(String username) throws Exception {
+        friendManager.rejectFriendRequest(username);
+    }
+
     /**
      * Sends a message to a friend.
      */
@@ -181,42 +183,42 @@ public class PeerController {
         }
         messageHandler.sendMessage(friend, content);
     }
-    
+
     /**
      * Gets list of friends.
      */
     public List<User> getFriends() {
         return friendManager.getFriends();
     }
-    
+
     /**
      * Gets list of pending friend requests.
      */
     public List<User> getPendingRequests() {
         return friendManager.getPendingRequests();
     }
-    
+
     /**
      * Gets the local user.
      */
     public User getLocalUser() {
         return localUser;
     }
-    
+
     /**
      * Gets the vector clock (for verification in tests).
      */
     public VectorClock getVectorClock() {
         return vectorClock;
     }
-    
+
     /**
      * Gets the message handler (for checking received messages in tests).
      */
     public MessageHandler getMessageHandler() {
         return messageHandler;
     }
-    
+
     /**
      * Checks if peer is started.
      */
@@ -232,9 +234,9 @@ public class PeerController {
     public Group createGroup(String name, List<String> friendUsernames) throws Exception {
         // Deduplicate usernames
         List<String> uniqueUsernames = friendUsernames.stream()
-            .distinct()
-            .collect(java.util.stream.Collectors.toList());
-        
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+
         List<User> friends = new ArrayList<>();
         for (String username : uniqueUsernames) {
             User friend = friendManager.getFriendByUsername(username);
@@ -255,10 +257,9 @@ public class PeerController {
             throw new IllegalArgumentException("Not a member of group: " + groupId);
         }
 
-
         GroupMessage message = GroupMessage.create(localUser, groupId, content, vectorClock);
         vectorClock.increment(localUser.getUserId());
-        
+
         // Store message locally first
         groupManager.addMessage(groupId, message);
 
@@ -268,7 +269,7 @@ public class PeerController {
             if (member.getUserId().equals(localUser.getUserId())) {
                 continue; // Skip self
             }
-            
+
             try {
                 Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
@@ -277,16 +278,16 @@ public class PeerController {
                 System.err.println("[Group] Failed to send to " + member.getUsername() + ": " + e.getMessage());
             }
         }
-        
+
         // Also send to leader if we're not the leader
         if (!group.getLeaderId().equals(localUser.getUserId())) {
             try {
                 // Find leader in friends or members
                 User leader = friendManager.getFriends().stream()
-                    .filter(f -> f.getUserId().equals(group.getLeaderId()))
-                    .findFirst()
-                    .orElse(null);
-                
+                        .filter(f -> f.getUserId().equals(group.getLeaderId()))
+                        .findFirst()
+                        .orElse(null);
+
                 if (leader != null) {
                     Registry registry = LocateRegistry.getRegistry(leader.getIpAddress(), leader.getRmiPort());
                     PeerService peerService = (PeerService) registry.lookup("PeerService");
@@ -304,21 +305,21 @@ public class PeerController {
     public List<Group> getGroups() {
         return groupManager.getGroups();
     }
-    
+
     /**
      * Get a specific group by ID.
      */
     public Group getGroup(String groupId) {
         return groupManager.getGroup(groupId);
     }
-    
+
     /**
      * Gets the group manager.
      */
     public GroupManager getGroupManager() {
         return groupManager;
     }
-    
+
     /**
      * Set the invitation handler for controlling accept/reject decisions.
      * Used by tests to programmatically control invitation responses.
@@ -341,11 +342,12 @@ public class PeerController {
      * Restores network connectivity by restarting the RMI server.
      */
     public void restoreNetwork() throws Exception {
-        PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler, groupManager, gossipManager, consensusManager);
+        PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler,
+                groupManager, gossipManager, consensusManager);
         peerService.setElectionManager(electionManager);
         rmiServer.start(peerService);
     }
-    
+
     /**
      * Sets a callback for sync completion events.
      * Used by tests to wait for sync operations to complete.
@@ -353,22 +355,22 @@ public class PeerController {
     public void setSyncCallback(ConsensusManager.SyncCallback callback) {
         consensusManager.setSyncCallback(callback);
     }
-    
+
     /**
      * Gets the consensus manager for testing purposes.
      */
     public ConsensusManager getConsensusManager() {
         return consensusManager;
     }
-    
+
     /**
      * Waits for messages to be synced to the group, with polling and timeout.
      * Returns true if the expected message count was reached, false if timeout.
      *
-     * @param groupId The group ID to check
+     * @param groupId              The group ID to check
      * @param expectedMessageCount The minimum number of messages to wait for
-     * @param timeoutMs Maximum time to wait in milliseconds
-     * @param pollIntervalMs Time between checks in milliseconds
+     * @param timeoutMs            Maximum time to wait in milliseconds
+     * @param pollIntervalMs       Time between checks in milliseconds
      * @return true if messages synced, false if timeout
      */
     public boolean waitForMessages(String groupId, int expectedMessageCount, long timeoutMs, long pollIntervalMs) {
@@ -387,13 +389,14 @@ public class PeerController {
         }
         return false;
     }
-    
+
     /**
      * Waits for a group to be created/received, with polling and timeout.
      * Returns true if the group exists, false if timeout.
      *
-     * @param groupId The group ID to wait for (or null to wait for any group)
-     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param groupId        The group ID to wait for (or null to wait for any
+     *                       group)
+     * @param timeoutMs      Maximum time to wait in milliseconds
      * @param pollIntervalMs Time between checks in milliseconds
      * @return true if group found, false if timeout
      */
@@ -418,14 +421,14 @@ public class PeerController {
         }
         return false;
     }
-    
+
     /**
      * Waits for election to complete and a new leader to be elected.
      * Returns true if new leader differs from old leader, false if timeout.
      *
-     * @param groupId The group ID
-     * @param oldLeaderId The previous leader's ID
-     * @param timeoutMs Maximum time to wait in milliseconds
+     * @param groupId        The group ID
+     * @param oldLeaderId    The previous leader's ID
+     * @param timeoutMs      Maximum time to wait in milliseconds
      * @param pollIntervalMs Time between checks in milliseconds
      * @return true if new leader elected, false if timeout
      */
