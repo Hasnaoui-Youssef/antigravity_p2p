@@ -1,6 +1,6 @@
 package p2p.common.model.message;
 
-import p2p.common.model.MessageType;
+import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
 
 import java.time.Instant;
@@ -19,23 +19,23 @@ public final class GroupInvitationRequest extends Message {
     private final String groupName;
     private final List<User> potentialMembers;
 
-    public GroupInvitationRequest(String messageId, String senderId, long timestamp, 
-                                 String groupId, String groupName, List<User> potentialMembers) {
-        super(messageId, senderId, timestamp, MessageType.INVITATION_REQUEST);
+    public GroupInvitationRequest(String messageId, String senderId, long timestamp,
+            String groupId, String groupName, List<User> potentialMembers) {
+        super(messageId, senderId, timestamp, MessageTopic.INVITATION_REQUEST);
         this.groupId = Objects.requireNonNull(groupId);
         this.groupName = Objects.requireNonNull(groupName);
         this.potentialMembers = Collections.unmodifiableList(Objects.requireNonNull(potentialMembers));
     }
 
-    public static GroupInvitationRequest create(String senderId, String groupId, String groupName, List<User> potentialMembers) {
+    public static GroupInvitationRequest create(String senderId, String groupId, String groupName,
+            List<User> potentialMembers) {
         return new GroupInvitationRequest(
-            UUID.randomUUID().toString(),
-            senderId,
-            Instant.now().toEpochMilli(),
-            groupId,
-            groupName,
-            potentialMembers
-        );
+                UUID.randomUUID().toString(),
+                senderId,
+                Instant.now().toEpochMilli(),
+                groupId,
+                groupName,
+                potentialMembers);
     }
 
     public String getGroupId() {
@@ -45,7 +45,7 @@ public final class GroupInvitationRequest extends Message {
     public String getGroupName() {
         return groupName;
     }
-    
+
     public List<User> getPotentialMembers() {
         return potentialMembers;
     }
@@ -53,6 +53,6 @@ public final class GroupInvitationRequest extends Message {
     @Override
     public String toString() {
         return String.format("GroupInvitationRequest{id='%s', sender='%s', group='%s', members=%d}",
-            messageId, senderId, groupName, potentialMembers.size());
+                messageId, senderId, groupName, potentialMembers.size());
     }
 }

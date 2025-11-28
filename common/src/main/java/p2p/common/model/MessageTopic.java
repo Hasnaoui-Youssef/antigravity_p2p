@@ -1,6 +1,6 @@
 package p2p.common.model;
 
-public enum MessageType {
+public enum MessageTopic {
     DIRECT,
     GROUP,
     GOSSIP,
@@ -8,5 +8,7 @@ public enum MessageType {
     SYNC_RESPONSE,
     ELECTION,
     INVITATION_REQUEST,
-    INVITATION_RESPONSE
+    INVITATION_RESPONSE,
+    GROUP_REJECT,
+    FRIEND_MESSAGE
 }

@@ -4,6 +4,7 @@ import p2p.common.model.Group;
 import p2p.common.model.User;
 import p2p.common.model.message.*;
 import p2p.common.vectorclock.VectorClock;
+import p2p.peer.PeerEventListener;
 import p2p.peer.friends.FriendManager;
 import p2p.common.rmi.PeerService;
 
@@ -32,19 +33,25 @@ public class GroupManager {
     // groupId -> PendingGroup (for groups awaiting invitation responses)
     private final Map<String, PendingGroup> pendingGroups = new ConcurrentHashMap<>();
 
-    // Scheduler for invitation timeouts
-    private final ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(1);
-
-    private static final int INVITATION_TIMEOUT_SECONDS = 3;
     private static final int MIN_GROUP_SIZE = 3; // Creator + 2 others
 
     private LeaderElectionManager electionManager;
     private InvitationHandler invitationHandler; // Callback for handling invitations
 
+    private final List<PeerEventListener> listeners = new CopyOnWriteArrayList<>();
+
     public GroupManager(User localUser, VectorClock vectorClock, FriendManager friendManager) {
         this.localUser = localUser;
         this.vectorClock = vectorClock;
         this.friendManager = friendManager;
+    }
+
+    public void addEventListener(PeerEventListener listener) {
+        listeners.add(listener);
+    }
+
+    public void removeEventListener(PeerEventListener listener) {
+        listeners.remove(listener);
     }
 
     /**
@@ -91,20 +98,11 @@ public class GroupManager {
             try {
                 sendInvitationToUser(member, invitation);
             } catch (Exception e) {
-                System.err.println(
-                        "[GroupManager] Failed to send invitation to " + member.getUsername() + ": " + e.getMessage());
+                notifyError("Failed to send invitation to " + member.getUsername(), e);
             }
         }
 
-        // Schedule timeout (3 seconds)
-        ScheduledFuture<?> timeout = timeoutScheduler.schedule(
-                () -> handleInvitationTimeout(groupId),
-                INVITATION_TIMEOUT_SECONDS,
-                TimeUnit.SECONDS);
-        pending.setTimeoutTask(timeout);
-
-        System.out.println(
-                "[GroupManager] Created pending group '" + name + "' with " + potentialMembers.size() + " invited");
+        notifyLog("Created pending group '" + name + "' with " + potentialMembers.size() + " invited");
 
         // Return temp group for reference (won't be added to active groups until
         // finalized)
@@ -121,30 +119,6 @@ public class GroupManager {
     }
 
     /**
-     * Handle invitation timeout - treat non-responders as rejected.
-     */
-    private void handleInvitationTimeout(String groupId) {
-        PendingGroup pending = pendingGroups.get(groupId);
-        if (pending == null) {
-            return; // Already finalized or dissolved
-        }
-
-        // Mark all non-responders as rejected
-        Set<String> nonResponders = pending.getNonResponders();
-        for (String userId : nonResponders) {
-            pending.recordRejection(userId);
-            System.out.println("[GroupManager] Invitation timeout for user " + userId + " in group " + groupId);
-        }
-
-        // Check if we can finalize
-        if (pending.canFinalize()) {
-            finalizeGroup(groupId, pending);
-        } else {
-            dissolveGroup(groupId, pending, "Insufficient acceptances after timeout");
-        }
-    }
-
-    /**
      * Handle incoming invitation request using the registered InvitationHandler.
      * 
      * @param request The invitation request
@@ -154,24 +128,27 @@ public class GroupManager {
             // Find the creator from our friends list (they must be a friend to invite us)
             // We can't use potentialMembers because that only contains invitees, not the
             // creator
-            User creator = friendManager.getFriendByUsername(request.getSenderId());
+            User creator = friendManager.getFriendById(request.getSenderId());
 
             if (creator != null) {
                 String groupId = request.getGroupId();
                 String groupName = request.getGroupName();
 
-                System.out.println(
-                        "[GroupManager] Received invitation to group '" + groupName + "' from "
-                                + request.getSenderId());
+                notifyLog("Received invitation to group '" + groupName + "' from " + request.getSenderId());
+
+                // Notify listeners
+                for (PeerEventListener listener : listeners) {
+                    listener.onGroupInvitation(request);
+                }
 
                 GroupInvitationResponse.Status status = GroupInvitationResponse.Status.ACCEPTED;
                 if (invitationHandler != null) {
                     status = invitationHandler.onInvitationReceived(request);
                 } else {
-                    System.err.println("[GroupManager] No InvitationHandler set - accepting invitation by default");
+                    notifyLog("No InvitationHandler set - accepting invitation by default");
                 }
 
-                System.out.println("[GroupManager] Decision: " + status);
+                notifyLog("Decision: " + status);
 
                 // Send response back to creator
                 GroupInvitationResponse response = GroupInvitationResponse.create(
@@ -180,10 +157,14 @@ public class GroupManager {
                         status);
                 sendInvitationResponse(creator, response);
             } else {
-                System.err.println("[GroupManager] Cannot send response - creator not in friends list");
+                System.out.println("[DEBUG] GroupManager: Cannot send response - creator " + request.getSenderId()
+                        + " not in friends list");
+                notifyError("Cannot send response - creator not in friends list", null);
             }
         } catch (Exception e) {
-            System.err.println("[GroupManager] Failed to send invitation response: " + e.getMessage());
+            System.out.println("[DEBUG] GroupManager: Failed to send invitation response: " + e.getMessage());
+            e.printStackTrace();
+            notifyError("Failed to send invitation response", e);
         }
     }
 
@@ -205,32 +186,90 @@ public class GroupManager {
 
         PendingGroup pending = pendingGroups.get(groupId);
         if (pending == null) {
-            System.out.println("[GroupManager] Late/invalid response for group " + groupId + " from " + responderId);
-            return; // Group already finalized or doesn't exist
+            // Check if group is already active (late acceptance)
+            Group activeGroup = groups.get(groupId);
+            if (activeGroup != null) {
+                handleLateResponse(activeGroup, response);
+            } else {
+                notifyLog("Late/invalid response for group " + groupId + " from " + responderId);
+            }
+            return;
         }
 
         // Record the response
         if (response.getStatus() == GroupInvitationResponse.Status.ACCEPTED) {
             pending.recordAcceptance(responderId);
-            System.out.println("[GroupManager] User " + responderId + " accepted invitation to group " + groupId);
+            System.out
+                    .println("[DEBUG] GroupManager: Recorded acceptance from " + responderId + " for group " + groupId);
+            notifyLog("User " + responderId + " accepted invitation to group " + groupId);
         } else {
             pending.recordRejection(responderId);
-            System.out.println("[GroupManager] User " + responderId + " rejected invitation to group " + groupId);
+            notifyLog("User " + responderId + " rejected invitation to group " + groupId);
         }
 
-        // Check if all responded
-        if (pending.allResponded()) {
-            pending.cancelTimeout(); // Cancel timeout since all responded
-
-            if (pending.canFinalize()) {
-                finalizeGroup(groupId, pending);
-            } else {
-                dissolveGroup(groupId, pending, "Insufficient acceptances");
-            }
+        // Check if we can finalize (Leader + 2 accepted members = 3 total)
+        System.out.println("[DEBUG] GroupManager: Checking finalization for group " + groupId + ". Can finalize: "
+                + pending.canFinalize());
+        if (pending.canFinalize()) {
+            finalizeGroup(groupId, pending);
         } else if (pending.isImpossible()) {
-            // All responded but can't reach quorum
-            pending.cancelTimeout();
-            dissolveGroup(groupId, pending, "Cannot reach minimum group size");
+            // Too many rejections, can never reach minimum size
+            dissolveGroup(groupId, pending, "Cannot reach minimum group size due to rejections");
+        }
+    }
+
+    /**
+     * Handle group rejection message.
+     */
+    public void handleGroupReject(GroupRejectMessage reject) {
+        String groupId = reject.getGroupId();
+        String responderId = reject.getSenderId();
+
+        PendingGroup pending = pendingGroups.get(groupId);
+        if (pending != null) {
+            pending.recordRejection(responderId);
+            notifyLog("User " + responderId + " rejected invitation to group " + groupId);
+
+            if (pending.isImpossible()) {
+                dissolveGroup(groupId, pending, "Cannot reach minimum group size due to rejections");
+            }
+        } else {
+            notifyLog("Received group reject for unknown or already finalized group: " + groupId);
+        }
+    }
+
+    /**
+     * Handle a response that arrived after the group was already finalized.
+     */
+    private void handleLateResponse(Group group, GroupInvitationResponse response) {
+        if (response.getStatus() == GroupInvitationResponse.Status.ACCEPTED) {
+            // Add the late joiner
+            // We need to find the User object. Since we don't have the pending group
+            // anymore,
+            // we have to look it up from friends or rely on the fact that we invited them.
+            // For now, let's try to find them in friends.
+            User newMember = friendManager.getFriends().stream()
+                    .filter(u -> u.getUserId().equals(response.getSenderId()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (newMember != null) {
+                Set<User> updatedMembers = new HashSet<>(group.getMembers());
+                updatedMembers.add(newMember);
+                Group updatedGroup = new Group(
+                        group.getGroupId(),
+                        group.getName(),
+                        group.getLeaderId(),
+                        updatedMembers,
+                        group.getEpoch());
+                updateGroup(updatedGroup);
+
+                // Broadcast the group update to everyone (including the new member)
+                List<User> allMembers = new ArrayList<>(updatedMembers);
+                broadcastGroupFinalization(updatedGroup, allMembers);
+
+                notifyLog("Late joiner " + newMember.getUsername() + " added to group " + group.getName());
+            }
         }
     }
 
@@ -238,6 +277,7 @@ public class GroupManager {
      * Finalize the group - add to active groups.
      */
     private void finalizeGroup(String groupId, PendingGroup pending) {
+        System.out.println("[DEBUG] GroupManager: Finalizing group " + groupId);
         // Build set of accepted User objects (excluding creator - they're the leader)
         Set<User> finalMembers = new HashSet<>();
 
@@ -246,13 +286,11 @@ public class GroupManager {
         for (String acceptedId : pending.getAcceptedMemberIds()) {
             User acceptedUser = potentialMembers.get(acceptedId);
             if (acceptedUser != null) {
-                // Sharing the same User reference - safe because User is immutable
                 finalMembers.add(acceptedUser);
             }
         }
 
         // Create the finalized group with creator and accepted members
-        // Group.create will filter out creator from members if somehow included
         Group finalizedGroup = new Group(
                 groupId,
                 pending.getGroupName(),
@@ -272,8 +310,10 @@ public class GroupManager {
             electionManager.recordLeaderActivity(groupId);
         }
 
-        System.out.println("[GroupManager] Group '" + pending.getGroupName() + "' finalized with " +
-                (finalMembers.size() + 1) + " total members (leader + " + finalMembers.size() + " members)");
+        notifyLog("Group '" + pending.getGroupName() + "' finalized with " +
+                (finalMembers.size() + 1) + " total members");
+
+        notifyGroupEvent(groupId, "CREATED", "Group finalized");
 
         // Broadcast group creation notification to all accepted members
         broadcastGroupFinalization(finalizedGroup, new ArrayList<>(finalMembers));
@@ -296,10 +336,9 @@ public class GroupManager {
                 // Send the finalized group to the member
                 peerService.addFinalizedGroup(group);
 
-                System.out.println("[GroupManager] Sent finalized group to " + member.getUsername());
+                notifyLog("Sent finalized group to " + member.getUsername());
             } catch (Exception e) {
-                System.err.println(
-                        "[GroupManager] Failed to send group to " + member.getUsername() + ": " + e.getMessage());
+                notifyError("Failed to send group to " + member.getUsername(), e);
             }
         }
     }
@@ -310,7 +349,10 @@ public class GroupManager {
      */
     public void addFinalizedGroup(Group group) {
         if (groups.containsKey(group.getGroupId())) {
-            System.out.println("[GroupManager] Group " + group.getGroupId() + " already exists, skipping");
+            // Update existing group (e.g. new member joined)
+            groups.put(group.getGroupId(), group);
+            notifyLog("Updated group '" + group.getName() + "' with " + (group.getMembers().size() + 1) + " members");
+            notifyGroupEvent(group.getGroupId(), "UPDATED", "Group updated");
             return;
         }
 
@@ -322,18 +364,18 @@ public class GroupManager {
             electionManager.recordLeaderActivity(group.getGroupId());
         }
 
-        System.out.println("[GroupManager] Added finalized group '" + group.getName() + "' with " +
+        notifyLog("Added finalized group '" + group.getName() + "' with " +
                 (group.getMembers().size() + 1) + " total members");
+        notifyGroupEvent(group.getGroupId(), "JOINED", "Joined group");
     }
 
     /**
      * Dissolve a pending group that cannot be finalized.
      */
     private void dissolveGroup(String groupId, PendingGroup pending, String reason) {
-        System.out.println("[GroupManager] Dissolving group " + groupId + ": " + reason);
+        notifyLog("Dissolving group " + groupId + ": " + reason);
         pendingGroups.remove(groupId);
-
-        // TODO: Notify invited users that group was dissolved
+        // We could notify invitees here, but for now we just drop it locally
     }
 
     /**
@@ -343,8 +385,8 @@ public class GroupManager {
         Group group = groups.remove(groupId);
         if (group != null) {
             groupMessages.remove(groupId);
-            System.out.println("[GroupManager] Group '" + group.getName() +
-                    "' dissolved (fell below minimum size)");
+            notifyLog("Group '" + group.getName() + "' dissolved (fell below minimum size)");
+            notifyGroupEvent(groupId, "DISSOLVED", "Group dissolved");
         }
     }
 
@@ -412,9 +454,6 @@ public class GroupManager {
     /**
      * Gets messages for a group.
      */
-    /**
-     * Gets messages for a group.
-     */
     public List<Message> getMessages(String groupId) {
         return new ArrayList<>(groupMessages.getOrDefault(groupId, Collections.emptyList()));
     }
@@ -440,5 +479,23 @@ public class GroupManager {
             }
         }
         return merged;
+    }
+
+    private void notifyLog(String message) {
+        for (PeerEventListener listener : listeners) {
+            listener.onLog(message);
+        }
+    }
+
+    private void notifyError(String message, Throwable t) {
+        for (PeerEventListener listener : listeners) {
+            listener.onError(message, t);
+        }
+    }
+
+    private void notifyGroupEvent(String groupId, String type, String message) {
+        for (PeerEventListener listener : listeners) {
+            listener.onGroupEvent(groupId, type, message);
+        }
     }
 }

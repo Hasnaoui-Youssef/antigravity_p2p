@@ -4,6 +4,7 @@ import p2p.common.model.Group;
 import p2p.common.model.User;
 import p2p.common.model.message.ElectionMessage;
 import p2p.common.rmi.PeerService;
+import p2p.peer.PeerEventListener;
 import p2p.peer.messaging.GossipManager;
 
 import java.rmi.registry.LocateRegistry;
@@ -33,9 +34,19 @@ public class LeaderElectionManager {
 
     private static final long ELECTION_TIMEOUT_MS = 3000; // 3 seconds
 
+    private final List<PeerEventListener> listeners = new CopyOnWriteArrayList<>();
+
     public LeaderElectionManager(User localUser, GroupManager groupManager) {
         this.localUser = localUser;
         this.groupManager = groupManager;
+    }
+
+    public void addEventListener(PeerEventListener listener) {
+        listeners.add(listener);
+    }
+
+    public void removeEventListener(PeerEventListener listener) {
+        listeners.remove(listener);
     }
 
     public void setGossipManager(GossipManager gossipManager) {
@@ -69,7 +80,7 @@ public class LeaderElectionManager {
             Group group = groupManager.getGroup(groupId);
             if (group != null) {
                 // Leader is still alive - cancel the election
-                System.out.println("[Election] Leader activity detected for group " + group.getName() +
+                notifyLog("Leader activity detected for group " + group.getName() +
                         " - cancelling election (epoch " + state.epoch + ")");
                 ongoingElections.remove(groupId);
 
@@ -98,7 +109,7 @@ public class LeaderElectionManager {
             // leader)
             // With only 2 remaining, we'd have 1 leader + 1 member = 2 total (below minimum
             // of 3)
-            System.out.println("[Election] Group " + group.getName() + " has only " +
+            notifyLog("Group " + group.getName() + " has only " +
                     remainingMembers + " remaining members after leader failure. Auto-dissolving...");
             groupManager.dissolveGroup(groupId);
             if (gossipManager != null) {
@@ -119,14 +130,14 @@ public class LeaderElectionManager {
 
         // Check if we're the leader (shouldn't initiate election if we are)
         if (group.getLeaderId().equals(localUser.getUserId())) {
-            System.out.println("[Election] We are the leader - not initiating election");
+            notifyLog("We are the leader - not initiating election");
             return;
         }
 
         // Check if election already ongoing for this epoch
         ElectionState existingState = ongoingElections.get(groupId);
         if (existingState != null && existingState.epoch == newEpoch) {
-            System.out.println("[Election] Election already ongoing for epoch " + newEpoch);
+            notifyLog("Election already ongoing for epoch " + newEpoch);
             return; // Already in progress
         }
 
@@ -134,13 +145,13 @@ public class LeaderElectionManager {
         // Use the highest user ID among all members (deterministic)
         String determinedCandidate = determineCandidateLexicographically(group);
 
-        System.out.println("[Election] Leader suspected for group " + group.getName() +
+        notifyLog("Leader suspected for group " + group.getName() +
                 " (epoch " + newEpoch + "), deterministic candidate: " + determinedCandidate.substring(0, 8));
 
         // Only the determined candidate should propose
         if (!determinedCandidate.equals(localUser.getUserId())) {
             // We're not the candidate, just wait for proposal from determined candidate
-            System.out.println("[Election] Not the candidate (we are " + localUser.getUserId().substring(0, 8) +
+            notifyLog("Not the candidate (we are " + localUser.getUserId().substring(0, 8) +
                     "), waiting for proposal");
             return;
         }
@@ -149,7 +160,7 @@ public class LeaderElectionManager {
         ElectionState state = new ElectionState(group, newEpoch, localUser.getUserId());
         ongoingElections.put(groupId, state);
 
-        System.out.println("[Election] Starting election for group " + group.getName() +
+        notifyLog("Starting election for group " + group.getName() +
                 " (epoch " + newEpoch + ") as candidate");
 
         // Vote for ourselves
@@ -194,20 +205,20 @@ public class LeaderElectionManager {
     public void handleElectionProposal(ElectionMessage message) {
         Group group = groupManager.getGroup(message.getGroupId());
         if (group == null) {
-            System.out.println("[Election] Ignoring proposal - group not found: " + message.getGroupId());
+            notifyLog("Ignoring proposal - group not found: " + message.getGroupId());
             return;
         }
 
         String groupId = message.getGroupId();
         long proposalEpoch = message.getEpoch();
 
-        System.out.println("[Election] Received proposal for group " + group.getName() +
+        notifyLog("Received proposal for group " + group.getName() +
                 " (epoch " + proposalEpoch + ") from " + message.getSenderId() +
                 ", current epoch: " + group.getEpoch());
 
         // Reject stale proposals
         if (proposalEpoch <= group.getEpoch()) {
-            System.out.println("[Election] Rejecting stale proposal (epoch " + proposalEpoch +
+            notifyLog("Rejecting stale proposal (epoch " + proposalEpoch +
                     " <= current " + group.getEpoch() + ")");
             return;
         }
@@ -215,14 +226,14 @@ public class LeaderElectionManager {
         // Check if we've already voted in this epoch
         Set<Long> voted = votedEpochs.computeIfAbsent(groupId, k -> ConcurrentHashMap.newKeySet());
         if (voted.contains(proposalEpoch)) {
-            System.out.println("[Election] Already voted in epoch " + proposalEpoch);
+            notifyLog("Already voted in epoch " + proposalEpoch);
             return; // Already voted in this epoch
         }
 
         // Verify this is from the deterministic candidate
         String expectedCandidate = determineCandidateLexicographically(group);
         if (!message.getCandidateId().equals(expectedCandidate)) {
-            System.out.println("[Election] Rejecting proposal from non-deterministic candidate " +
+            notifyLog("Rejecting proposal from non-deterministic candidate " +
                     message.getCandidateId() + ", expected " + expectedCandidate);
             return;
         }
@@ -240,7 +251,7 @@ public class LeaderElectionManager {
         // Vote for the candidate
         state.recordVote(localUser.getUserId(), message.getCandidateId());
 
-        System.out.println("[Election] Voting for " + message.getCandidateId() +
+        notifyLog("Voting for " + message.getCandidateId() +
                 " in epoch " + proposalEpoch);
 
         // Send vote back to proposer
@@ -259,28 +270,28 @@ public class LeaderElectionManager {
     public void handleElectionVote(ElectionMessage message) {
         ElectionState state = ongoingElections.get(message.getGroupId());
         if (state == null || state.epoch != message.getEpoch()) {
-            System.out.println("[Election] Ignoring vote - no matching election state");
+            notifyLog("Ignoring vote - no matching election state");
             return; // Not our election or wrong epoch
         }
 
         // Only the candidate should collect votes
         if (!state.candidateId.equals(localUser.getUserId())) {
-            System.out.println("[Election] Ignoring vote - not the candidate");
+            notifyLog("Ignoring vote - not the candidate");
             return;
         }
 
-        System.out.println("[Election] Received vote from " + message.getSenderId() +
+        notifyLog("Received vote from " + message.getSenderId() +
                 " for " + message.getCandidateId() + " (epoch " + message.getEpoch() + ")");
 
         // Record vote (idempotent - duplicate votes from same voter don't count twice)
         state.recordVote(message.getSenderId(), message.getCandidateId());
 
-        System.out.println("[Election] Vote count: " + state.getVoteCount());
+        notifyLog("Vote count: " + state.getVoteCount());
 
         // Check if we have quorum
         Group group = groupManager.getGroup(message.getGroupId());
         if (group != null && state.hasQuorum()) {
-            System.out.println("[Election] Quorum achieved! Finalizing election.");
+            notifyLog("Quorum achieved! Finalizing election.");
             // We have majority - finalize immediately
             finalizeElection(message.getGroupId());
         }
@@ -308,8 +319,10 @@ public class LeaderElectionManager {
         // Record leader activity for gossip
         recordLeaderActivity(message.getGroupId());
 
-        System.out.println("[Election] New leader elected for group " + group.getName() +
+        notifyLog("New leader elected for group " + group.getName() +
                 " - " + message.getCandidateId() + " (epoch " + message.getEpoch() + ")");
+
+        notifyLeaderElected(message.getGroupId(), message.getCandidateId(), message.getEpoch());
     }
 
     /**
@@ -333,7 +346,7 @@ public class LeaderElectionManager {
 
         // Check if we have quorum
         if (!state.hasQuorum()) {
-            System.out.println("[Election] Failed to achieve quorum for group " + group.getName());
+            notifyLog("Failed to achieve quorum for group " + group.getName());
             ongoingElections.remove(groupId);
             return;
         }
@@ -358,9 +371,11 @@ public class LeaderElectionManager {
 
         ongoingElections.remove(groupId);
 
-        System.out.println("[Election] Election complete for group " + group.getName() +
+        notifyLog("Election complete for group " + group.getName() +
                 " - new leader: " + winner + " (epoch " + state.epoch + ") with " +
                 state.getVoteCount() + " votes");
+
+        notifyLeaderElected(groupId, winner, state.epoch);
     }
 
     /**
@@ -373,12 +388,12 @@ public class LeaderElectionManager {
                 .orElse(null);
 
         if (target == null) {
-            System.err.println("[Election] Cannot find user " + userId.substring(0, 8) +
-                    " in group members to send vote");
+            notifyError("Cannot find user " + userId.substring(0, 8) +
+                    " in group members to send vote", null);
             return;
         }
 
-        System.out.println("[Election] Sending " + message.getElectionType() + " to " +
+        notifyLog("Sending " + message.getElectionType() + " to " +
                 target.getUsername() + " at " + target.getIpAddress() + ":" + target.getRmiPort());
 
         executor.submit(() -> {
@@ -386,11 +401,11 @@ public class LeaderElectionManager {
                 Registry registry = LocateRegistry.getRegistry(target.getIpAddress(), target.getRmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
                 peerService.receiveMessage(message);
-                System.out.println("[Election] Successfully sent " + message.getElectionType() +
+                notifyLog("Successfully sent " + message.getElectionType() +
                         " to " + target.getUsername());
             } catch (Exception e) {
-                System.err.println("[Election] Failed to send " + message.getElectionType() +
-                        " to " + target.getUsername() + ": " + e.getMessage());
+                notifyError("Failed to send " + message.getElectionType() +
+                        " to " + target.getUsername(), e);
             }
         });
     }
@@ -401,15 +416,14 @@ public class LeaderElectionManager {
     private void broadcastToGroup(Group group, ElectionMessage message) {
         Set<User> allMembers = new HashSet<>(group.getMembers());
 
-        System.out.println("[Election] Broadcasting to " + allMembers.size() + " members");
+        notifyLog("Broadcasting to " + allMembers.size() + " members");
 
         for (User member : allMembers) {
             if (member.getUserId().equals(localUser.getUserId())) {
-                System.out.println("[Election] Skipping self: " + member.getUsername());
                 continue;
             }
 
-            System.out.println("[Election] Sending to " + member.getUsername() +
+            notifyLog("Sending to " + member.getUsername() +
                     " at " + member.getIpAddress() + ":" + member.getRmiPort());
 
             executor.submit(() -> {
@@ -417,9 +431,9 @@ public class LeaderElectionManager {
                     Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
                     PeerService peerService = (PeerService) registry.lookup("PeerService");
                     peerService.receiveMessage(message);
-                    System.out.println("[Election] Successfully sent to " + member.getUsername());
+                    notifyLog("Successfully sent to " + member.getUsername());
                 } catch (Exception e) {
-                    System.err.println("[Election] Failed to send to " + member.getUsername() + ": " + e.getMessage());
+                    notifyError("Failed to send to " + member.getUsername(), e);
                 }
             });
         }
@@ -473,6 +487,24 @@ public class LeaderElectionManager {
                     .count();
 
             return votesForCandidate >= quorum;
+        }
+    }
+
+    private void notifyLog(String message) {
+        for (PeerEventListener listener : listeners) {
+            listener.onLog(message);
+        }
+    }
+
+    private void notifyError(String message, Throwable t) {
+        for (PeerEventListener listener : listeners) {
+            listener.onError(message, t);
+        }
+    }
+
+    private void notifyLeaderElected(String groupId, String leaderId, long epoch) {
+        for (PeerEventListener listener : listeners) {
+            listener.onLeaderElected(groupId, leaderId, epoch);
         }
     }
 }

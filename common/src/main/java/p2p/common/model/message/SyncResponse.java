@@ -1,6 +1,6 @@
 package p2p.common.model.message;
 
-import p2p.common.model.MessageType;
+import p2p.common.model.MessageTopic;
 import p2p.common.vectorclock.VectorClock;
 
 import java.time.Instant;
@@ -19,22 +19,23 @@ public final class SyncResponse extends Message {
     private final String groupId;
     private final List<Message> missingMessages;
 
-    public SyncResponse(String messageId, String senderId, long timestamp, String requestId, String groupId, List<Message> missingMessages) {
-        super(messageId, senderId, timestamp, MessageType.SYNC_RESPONSE);
+    public SyncResponse(String messageId, String senderId, long timestamp, String requestId, String groupId,
+            List<Message> missingMessages) {
+        super(messageId, senderId, timestamp, MessageTopic.SYNC_RESPONSE);
         this.requestId = Objects.requireNonNull(requestId);
         this.groupId = Objects.requireNonNull(groupId);
         this.missingMessages = Collections.unmodifiableList(Objects.requireNonNull(missingMessages));
     }
 
-    public static SyncResponse create(String senderId, String requestId, String groupId, List<Message> missingMessages) {
+    public static SyncResponse create(String senderId, String requestId, String groupId,
+            List<Message> missingMessages) {
         return new SyncResponse(
-            UUID.randomUUID().toString(),
-            senderId,
-            Instant.now().toEpochMilli(),
-            requestId,
-            groupId,
-            missingMessages
-        );
+                UUID.randomUUID().toString(),
+                senderId,
+                Instant.now().toEpochMilli(),
+                requestId,
+                groupId,
+                missingMessages);
     }
 
     public String getRequestId() {
@@ -52,6 +53,6 @@ public final class SyncResponse extends Message {
     @Override
     public String toString() {
         return String.format("SyncResponse{id='%s', reqId='%s', sender='%s', group='%s', count=%d}",
-            messageId, requestId, senderId, groupId, missingMessages.size());
+                messageId, requestId, senderId, groupId, missingMessages.size());
     }
 }

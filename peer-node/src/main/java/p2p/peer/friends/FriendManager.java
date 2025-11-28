@@ -1,13 +1,16 @@
 package p2p.peer.friends;
 
 import p2p.common.model.User;
+import p2p.common.model.message.FriendMessage;
 import p2p.common.rmi.PeerService;
 import p2p.common.vectorclock.VectorClock;
+import p2p.peer.PeerEventListener;
 
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Manages friend relationships and friend requests.
@@ -20,18 +23,24 @@ public class FriendManager {
     // We store the user id, not the username.
     private final Map<String, User> friends = new ConcurrentHashMap<>();
 
-    /**
-     * This is fundamentally flawded as it assumes that the username is unique which
-     * isn't the case.
-     * For now, we'll keep it for simplicity, as the way we handle commands in the
-     * UI relies on the username.
-     */
+    // Map username -> userId for quick lookups
     private final Map<String, String> friendUserNameToId = new ConcurrentHashMap<>();
+
     private final Map<String, User> pendingRequests = new ConcurrentHashMap<>();
+
+    private final List<PeerEventListener> listeners = new CopyOnWriteArrayList<>();
 
     public FriendManager(User localUser, VectorClock vectorClock) {
         this.localUser = localUser;
         this.vectorClock = vectorClock;
+    }
+
+    public void addEventListener(PeerEventListener listener) {
+        listeners.add(listener);
+    }
+
+    public void removeEventListener(PeerEventListener listener) {
+        listeners.remove(listener);
     }
 
     /**
@@ -39,7 +48,7 @@ public class FriendManager {
      */
     public void sendFriendRequest(User target) throws Exception {
         if (friends.containsKey(target.getUserId())) {
-            System.out.println("[Friends] Already friends with " + target.getUsername());
+            notifyLog("Already friends with " + target.getUsername());
             return;
         }
 
@@ -52,17 +61,23 @@ public class FriendManager {
         Registry registry = LocateRegistry.getRegistry(target.getIpAddress(), target.getRmiPort());
         PeerService peerService = (PeerService) registry.lookup("PeerService");
 
-        // Send friend request
-        peerService.receiveFriendRequest(localUser, vectorClock.clone());
+        // Send friend request message
+        FriendMessage message = FriendMessage.create(localUser, FriendMessage.SubTopic.FRIEND_REQUEST);
+        peerService.receiveMessage(message);
 
-        System.out.println("[Friends] Friend request sent to " + target.getUsername());
+        notifyLog("Friend request sent to " + target.getUsername());
     }
 
     /**
      * Accept a friend request.
      */
     public void acceptFriendRequest(String username) throws Exception {
-        User requester = pendingRequests.get(username);
+        // Find request by username
+        User requester = pendingRequests.values().stream()
+                .filter(u -> u.getUsername().equals(username))
+                .findFirst()
+                .orElse(null);
+
         if (requester == null) {
             throw new IllegalArgumentException("No pending request from " + username);
         }
@@ -70,16 +85,36 @@ public class FriendManager {
     }
 
     public void rejectFriendRequest(String username) throws Exception {
-        pendingRequests.remove(username);
-        synchronized (vectorClock) {
-            vectorClock.increment(localUser.getUserId());
+        // Find request by username
+        User requester = pendingRequests.values().stream()
+                .filter(u -> u.getUsername().equals(username))
+                .findFirst()
+                .orElse(null);
+
+        if (requester != null) {
+            pendingRequests.remove(requester.getUserId());
+            synchronized (vectorClock) {
+                vectorClock.increment(localUser.getUserId());
+            }
+
+            // Notify requester via RMI
+            try {
+                Registry registry = LocateRegistry.getRegistry(requester.getIpAddress(), requester.getRmiPort());
+                PeerService peerService = (PeerService) registry.lookup("PeerService");
+                FriendMessage message = FriendMessage.create(localUser, FriendMessage.SubTopic.FRIEND_REJECT);
+                peerService.receiveMessage(message);
+            } catch (Exception e) {
+                notifyLog("Failed to send reject message to " + username);
+            }
+
+            notifyLog("Rejected friend request from " + username);
         }
     }
 
     private void acceptFriendRequest(User requester) throws Exception {
         // Remove from pending and add to friends
         pendingRequests.remove(requester.getUserId());
-        friends.put(requester.getUserId(), requester);
+        addFriend(requester);
 
         // Increment vector clock
         synchronized (vectorClock) {
@@ -89,26 +124,50 @@ public class FriendManager {
         // Notify requester via RMI
         Registry registry = LocateRegistry.getRegistry(requester.getIpAddress(), requester.getRmiPort());
         PeerService peerService = (PeerService) registry.lookup("PeerService");
-        peerService.acceptFriendRequest(localUser, vectorClock.clone());
 
-        System.out.println("[Friends] Accepted friend request from " + requester.getUsername());
+        FriendMessage message = FriendMessage.create(localUser, FriendMessage.SubTopic.FRIEND_ACCEPT);
+        peerService.receiveMessage(message);
+
+        notifyLog("Accepted friend request from " + requester.getUsername());
     }
 
     /**
-     * Handle incoming friend request (called by RMI).
+     * Handle incoming friend request (called by PeerController).
      */
     public void handleFriendRequest(User requester) {
         if (friends.containsKey(requester.getUserId())) {
             return; // Already friends
         }
         pendingRequests.put(requester.getUserId(), requester);
+
+        // Notify listeners
+        for (PeerEventListener listener : listeners) {
+            listener.onFriendRequest(requester);
+        }
     }
 
     /**
-     * Handle friend acceptance (called by RMI).
+     * Handle friend acceptance (called by PeerController).
      */
     public void handleFriendAcceptance(User accepter) {
-        friends.put(accepter.getUserId(), accepter);
+        addFriend(accepter);
+
+        // Notify listeners
+        for (PeerEventListener listener : listeners) {
+            listener.onFriendRequestAccepted(accepter);
+        }
+    }
+
+    /**
+     * Handle friend rejection (called by PeerController).
+     */
+    public void handleFriendRejection(User rejecter) {
+        notifyLog(rejecter.getUsername() + " rejected your friend request.");
+    }
+
+    private void addFriend(User friend) {
+        friends.put(friend.getUserId(), friend);
+        friendUserNameToId.put(friend.getUsername(), friend.getUserId());
     }
 
     /**
@@ -122,7 +181,17 @@ public class FriendManager {
      * Get a friend by username.
      */
     public User getFriendByUsername(String username) {
-        return friends.get(friendUserNameToId.get(username));
+        String userId = friendUserNameToId.get(username);
+        if (userId == null)
+            return null;
+        return friends.get(userId);
+    }
+
+    /**
+     * Get a friend by user ID.
+     */
+    public User getFriendById(String userId) {
+        return friends.get(userId);
     }
 
     /**
@@ -137,5 +206,11 @@ public class FriendManager {
      */
     public List<User> getPendingRequests() {
         return new ArrayList<>(pendingRequests.values());
+    }
+
+    private void notifyLog(String message) {
+        for (PeerEventListener listener : listeners) {
+            listener.onLog(message);
+        }
     }
 }

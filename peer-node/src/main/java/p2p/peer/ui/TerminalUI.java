@@ -107,7 +107,7 @@ public class TerminalUI {
     // ========== Main Menu Commands ==========
 
     private void commandLogin() throws Exception {
-        controller.login();
+        controller.start();
 
         System.out.println("[Bootstrap] Connected and registered as " + controller.getLocalUser().getUsername());
     }
@@ -267,7 +267,7 @@ public class TerminalUI {
     }
 
     private void commandQuit() throws Exception {
-        controller.logout();
+        controller.stop();
         running = false;
         System.out.println("[Peer] Goodbye!");
     }

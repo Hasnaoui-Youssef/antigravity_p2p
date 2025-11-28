@@ -1,8 +1,9 @@
 package p2p.peer;
 
 import p2p.common.model.Group;
-import p2p.common.model.message.GroupMessage;
+import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
+import p2p.common.model.message.*;
 import p2p.common.rmi.BootstrapService;
 import p2p.common.rmi.PeerService;
 import p2p.common.vectorclock.VectorClock;
@@ -13,23 +14,23 @@ import p2p.peer.groups.LeaderElectionManager;
 import p2p.peer.messaging.GossipManager;
 import p2p.peer.messaging.MessageHandler;
 import p2p.peer.network.HeartbeatSender;
-import p2p.peer.network.PeerServiceImpl;
 import p2p.peer.network.RMIServer;
 
 import java.net.InetAddress;
+import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Programmatic peer controller for testing.
- * Provides API access to peer functionality without terminal UI.
- * 
- * @apiNote This class is designed for integration testing and automated
- *          scenarios.
+ * Main controller for the peer node.
+ * Merges the logic of the previous PeerController and PeerServiceImpl.
+ * Acts as the RMI server implementation and the central coordination point.
  */
-public class PeerController {
+public class PeerController extends UnicastRemoteObject implements PeerService {
 
     private final User localUser;
     private final VectorClock vectorClock;
@@ -46,6 +47,13 @@ public class PeerController {
     private BootstrapService bootstrapService;
     private volatile boolean started = false;
 
+    private final List<PeerEventListener> listeners = new CopyOnWriteArrayList<>();
+
+    // Synchronization locks/latches for waiting
+    private final Object messageWaitLock = new Object();
+    private final Object groupWaitLock = new Object();
+    private final Object electionWaitLock = new Object();
+
     /**
      * Creates a new peer controller.
      * 
@@ -57,6 +65,8 @@ public class PeerController {
      */
     public PeerController(String username, int rmiPort, String bootstrapHost, int bootstrapPort, int udpPort)
             throws Exception {
+        super(); // Export this object
+
         String localIp = InetAddress.getLocalHost().getHostAddress();
         this.localUser = User.create(username, localIp, rmiPort);
 
@@ -70,13 +80,11 @@ public class PeerController {
         this.consensusManager = new ConsensusManager(localUser, groupManager);
         this.gossipManager.setConsensusManager(consensusManager);
 
-        LeaderElectionManager electionManager = new LeaderElectionManager(localUser, groupManager);
-        electionManager.setGossipManager(gossipManager);
+        this.electionManager = new LeaderElectionManager(localUser, groupManager);
+        this.electionManager.setGossipManager(gossipManager);
         this.groupManager.setElectionManager(electionManager);
 
-        peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler,
-                groupManager, gossipManager, consensusManager);
-        peerService.setElectionManager(electionManager);
+        // We don't need PeerServiceImpl anymore, we ARE the service
         this.rmiServer = new RMIServer(rmiPort, "PeerService");
 
         this.heartbeatSender = new HeartbeatSender(localUser, bootstrapHost, udpPort);
@@ -86,10 +94,24 @@ public class PeerController {
         Registry registry = LocateRegistry.getRegistry(bootstrapHost, bootstrapPort);
         this.bootstrapService = (BootstrapService) registry.lookup("BootstrapService");
 
-        this.electionManager = electionManager;
+        // Register internal listener to trigger notifyAll for waiters
+        this.addEventListener(new InternalEventListener());
     }
 
-    private PeerServiceImpl peerService;
+    public void addEventListener(PeerEventListener listener) {
+        listeners.add(listener);
+        // Propagate listener to managers
+        friendManager.addEventListener(listener);
+        groupManager.addEventListener(listener);
+        electionManager.addEventListener(listener);
+    }
+
+    public void removeEventListener(PeerEventListener listener) {
+        listeners.remove(listener);
+        friendManager.removeEventListener(listener);
+        groupManager.removeEventListener(listener);
+        electionManager.removeEventListener(listener);
+    }
 
     /**
      * Starts the peer (RMI server, heartbeat).
@@ -99,13 +121,29 @@ public class PeerController {
             throw new IllegalStateException("Peer already started");
         }
 
-        rmiServer.start(peerService); // Use the pre-configured instance
+        // Check username uniqueness
+        List<User> existingUsers = bootstrapService.searchByUsername(localUser.getUsername());
+        if (!existingUsers.isEmpty()) {
+            // Check if it's not us (e.g. stale registration) - strictly speaking we should
+            // fail if ANYONE has this name
+            // But for robustness, if the IP/Port matches, maybe it's a restart.
+            // However, the requirement is strict uniqueness.
+            boolean collision = existingUsers.stream()
+                    .anyMatch(u -> !u.getUserId().equals(localUser.getUserId()));
+
+            if (collision) {
+                throw new IllegalStateException("Username '" + localUser.getUsername() + "' is already taken.");
+            }
+        }
+
+        rmiServer.start(this); // We are the service
         heartbeatThread.start();
         bootstrapService.register(localUser);
         gossipManager.start();
         electionManager.start();
 
         started = true;
+        notifyLog("Peer started: " + localUser.getUsername());
     }
 
     /**
@@ -131,26 +169,15 @@ public class PeerController {
 
         rmiServer.stop();
         started = false;
+        notifyLog("Peer stopped");
     }
 
-    public void login() throws Exception {
-        bootstrapService.register(localUser);
-    }
+    // ========== Client API ==========
 
-    public void logout() throws Exception {
-        bootstrapService.unregister(localUser.getUserId());
-    }
-
-    /**
-     * Searches for users by username.
-     */
     public List<User> searchUsers(String username) throws Exception {
         return bootstrapService.searchByUsername(username);
     }
 
-    /**
-     * Sends a friend request to another user.
-     */
     public void sendFriendRequest(String username) throws Exception {
         List<User> users = bootstrapService.searchByUsername(username);
         if (users.isEmpty()) {
@@ -159,23 +186,14 @@ public class PeerController {
         friendManager.sendFriendRequest(users.get(0));
     }
 
-    /**
-     * Accepts a pending friend request.
-     */
     public void acceptFriendRequest(String username) throws Exception {
         friendManager.acceptFriendRequest(username);
     }
 
-    /**
-     * Rejects a pending friend request.
-     */
     public void rejectFriendRequest(String username) throws Exception {
         friendManager.rejectFriendRequest(username);
     }
 
-    /**
-     * Sends a message to a friend.
-     */
     public void sendMessage(String username, String content) throws Exception {
         User friend = friendManager.getFriendByUsername(username);
         if (friend == null) {
@@ -184,53 +202,18 @@ public class PeerController {
         messageHandler.sendMessage(friend, content);
     }
 
-    /**
-     * Gets list of friends.
-     */
     public List<User> getFriends() {
         return friendManager.getFriends();
     }
 
-    /**
-     * Gets list of pending friend requests.
-     */
     public List<User> getPendingRequests() {
         return friendManager.getPendingRequests();
     }
 
-    /**
-     * Gets the local user.
-     */
     public User getLocalUser() {
         return localUser;
     }
 
-    /**
-     * Gets the vector clock (for verification in tests).
-     */
-    public VectorClock getVectorClock() {
-        return vectorClock;
-    }
-
-    /**
-     * Gets the message handler (for checking received messages in tests).
-     */
-    public MessageHandler getMessageHandler() {
-        return messageHandler;
-    }
-
-    /**
-     * Checks if peer is started.
-     */
-    public boolean isStarted() {
-        return started;
-    }
-
-    // ========== Group Management API ==========
-
-    /**
-     * Creates a new group with the given name and friends.
-     */
     public Group createGroup(String name, List<String> friendUsernames) throws Exception {
         // Deduplicate usernames
         List<String> uniqueUsernames = friendUsernames.stream()
@@ -248,9 +231,6 @@ public class PeerController {
         return groupManager.createGroup(name, friends);
     }
 
-    /**
-     * Sends a message to a group.
-     */
     public void sendGroupMessage(String groupId, String content) throws Exception {
         Group group = groupManager.getGroup(groupId);
         if (group == null) {
@@ -264,25 +244,22 @@ public class PeerController {
         groupManager.addMessage(groupId, message);
 
         // Broadcast to ALL group participants (members + leader)
-        // Members list doesn't include leader, so we need to handle both
         for (User member : group.getMembers()) {
             if (member.getUserId().equals(localUser.getUserId())) {
                 continue; // Skip self
             }
-
             try {
                 Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
                 peerService.receiveMessage(message);
             } catch (Exception e) {
-                System.err.println("[Group] Failed to send to " + member.getUsername() + ": " + e.getMessage());
+                notifyError("Failed to send to " + member.getUsername(), e);
             }
         }
 
         // Also send to leader if we're not the leader
         if (!group.getLeaderId().equals(localUser.getUserId())) {
             try {
-                // Find leader in friends or members
                 User leader = friendManager.getFriends().stream()
                         .filter(f -> f.getUserId().equals(group.getLeaderId()))
                         .findFirst()
@@ -294,129 +271,198 @@ public class PeerController {
                     peerService.receiveMessage(message);
                 }
             } catch (Exception e) {
-                System.err.println("[Group] Failed to send to leader: " + e.getMessage());
+                notifyError("Failed to send to leader", e);
             }
         }
     }
 
-    /**
-     * Gets all groups.
-     */
     public List<Group> getGroups() {
         return groupManager.getGroups();
     }
 
-    /**
-     * Get a specific group by ID.
-     */
     public Group getGroup(String groupId) {
         return groupManager.getGroup(groupId);
     }
 
-    /**
-     * Gets the group manager.
-     */
-    public GroupManager getGroupManager() {
-        return groupManager;
-    }
-
-    /**
-     * Set the invitation handler for controlling accept/reject decisions.
-     * Used by tests to programmatically control invitation responses.
-     */
     public void setInvitationHandler(p2p.peer.groups.InvitationHandler handler) {
         groupManager.setInvitationHandler(handler);
     }
 
-    // ========== Network Simulation for Testing ==========
+    // ========== PeerService RMI Implementation ==========
 
-    /**
-     * Simulates network failure by stopping the RMI server.
-     * The peer will be unable to receive messages.
-     */
-    public void simulateNetworkFailure() {
-        rmiServer.stop();
-    }
+    // Removed receiveFriendRequest and acceptFriendRequest as they are now messages
 
-    /**
-     * Restores network connectivity by restarting the RMI server.
-     */
-    public void restoreNetwork() throws Exception {
-        PeerServiceImpl peerService = new PeerServiceImpl(localUser, vectorClock, friendManager, messageHandler,
-                groupManager, gossipManager, consensusManager);
-        peerService.setElectionManager(electionManager);
-        rmiServer.start(peerService);
-    }
-
-    /**
-     * Sets a callback for sync completion events.
-     * Used by tests to wait for sync operations to complete.
-     */
-    public void setSyncCallback(ConsensusManager.SyncCallback callback) {
-        consensusManager.setSyncCallback(callback);
-    }
-
-    /**
-     * Gets the consensus manager for testing purposes.
-     */
-    public ConsensusManager getConsensusManager() {
-        return consensusManager;
-    }
-
-    /**
-     * Waits for messages to be synced to the group, with polling and timeout.
-     * Returns true if the expected message count was reached, false if timeout.
-     *
-     * @param groupId              The group ID to check
-     * @param expectedMessageCount The minimum number of messages to wait for
-     * @param timeoutMs            Maximum time to wait in milliseconds
-     * @param pollIntervalMs       Time between checks in milliseconds
-     * @return true if messages synced, false if timeout
-     */
-    public boolean waitForMessages(String groupId, int expectedMessageCount, long timeoutMs, long pollIntervalMs) {
-        long startTime = System.currentTimeMillis();
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            int messageCount = groupManager.getMessages(groupId).size();
-            if (messageCount >= expectedMessageCount) {
-                return true;
+    @Override
+    public void receiveMessage(Message message) throws RemoteException {
+        System.out.println("[DEBUG] " + localUser.getUsername() + " received message: " + message.getTopic() + " from "
+                + message.getSenderId());
+        switch (message.getTopic()) {
+            case DIRECT -> handleDirectMessage((DirectMessage) message);
+            case GROUP -> handleGroupMessage((GroupMessage) message);
+            case GOSSIP -> handleGossipMessage((GossipMessage) message);
+            case SYNC_REQUEST -> handleSyncRequest((SyncRequest) message);
+            case FRIEND_MESSAGE -> handleFriendshipMessage((FriendMessage) message);
+            case SYNC_RESPONSE -> handleSyncResponse((SyncResponse) message);
+            case ELECTION -> handleElectionMessage((ElectionMessage) message);
+            case INVITATION_REQUEST -> handleInvitationRequest((GroupInvitationRequest) message);
+            case INVITATION_RESPONSE -> handleInvitationResponse((GroupInvitationResponse) message);
+            case GROUP_REJECT -> {
+                if (message instanceof GroupRejectMessage reject) {
+                    groupManager.handleGroupReject(reject);
+                }
             }
-            try {
-                Thread.sleep(pollIntervalMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
+        }
+
+        // Notify listeners of message receipt
+        for (PeerEventListener listener : listeners) {
+            listener.onMessageReceived(message);
+        }
+    }
+
+    @Override
+    public void updateVectorClock(VectorClock clock) throws RemoteException {
+        synchronized (vectorClock) {
+            vectorClock.update(clock);
+        }
+    }
+
+    @Override
+    public boolean ping() throws RemoteException {
+        return true;
+    }
+
+    @Override
+    public void addFinalizedGroup(Group group) throws RemoteException {
+        groupManager.addFinalizedGroup(group);
+    }
+
+    // ========== Message Handling Helpers ==========
+
+    private void handleFriendshipMessage(FriendMessage message) {
+        switch (message.getFriendMessageType()) {
+            case FRIEND_REQUEST -> friendManager.handleFriendRequest(message.getSender());
+            case FRIEND_ACCEPT -> friendManager.handleFriendAcceptance(message.getSender());
+            case FRIEND_REJECT -> friendManager.handleFriendRejection(message.getSender());
+        }
+    }
+
+    private void handleDirectMessage(DirectMessage message) {
+        synchronized (vectorClock) {
+            vectorClock.update(message.getVectorClock());
+        }
+        messageHandler.handleIncomingMessage(message);
+    }
+
+    private void handleGroupMessage(GroupMessage message) {
+        synchronized (vectorClock) {
+            vectorClock.update(message.getVectorClock());
+        }
+        groupManager.addMessage(message.getGroupId(), message);
+
+        Group group = groupManager.getGroup(message.getGroupId());
+        if (group != null && message.getSenderId().equals(group.getLeaderId())) {
+            electionManager.recordLeaderActivity(message.getGroupId());
+        }
+    }
+
+    private void handleGossipMessage(GossipMessage message) {
+        gossipManager.handleGossipMessage(message);
+    }
+
+    private void handleSyncRequest(SyncRequest message) {
+        User requester = friendManager.getFriends().stream()
+                .filter(u -> u.getUserId().equals(message.getSenderId()))
+                .findFirst()
+                .orElse(null);
+
+        if (requester != null) {
+            consensusManager.handleSyncRequest(message.getGroupId(), message.getLastKnownState(), requester,
+                    message.getMessageId());
+        }
+    }
+
+    private void handleSyncResponse(SyncResponse message) {
+        consensusManager.handleSyncResponse(message);
+    }
+
+    private void handleElectionMessage(ElectionMessage message) {
+        switch (message.getElectionType()) {
+            case PROPOSAL -> electionManager.handleElectionProposal(message);
+            case VOTE -> electionManager.handleElectionVote(message);
+            case RESULT -> electionManager.handleElectionResult(message);
+        }
+    }
+
+    private void handleInvitationRequest(GroupInvitationRequest message) {
+        System.out.println(
+                "[DEBUG] " + localUser.getUsername() + " handling invitation request from " + message.getSenderId());
+        groupManager.handleInvitationRequest(message);
+    }
+
+    private void handleInvitationResponse(GroupInvitationResponse message) {
+        System.out.println("[DEBUG] " + localUser.getUsername() + " handling invitation response from "
+                + message.getSenderId() + " status=" + message.getStatus());
+        groupManager.handleInvitationResponse(message);
+    }
+
+    // ========== Wait Methods (Robust Synchronization) ==========
+
+    /**
+     * Waits for messages to be synced to the group using wait/notify.
+     */
+    public boolean waitForMessages(String groupId, int expectedMessageCount, long timeoutMs) {
+        long startTime = System.currentTimeMillis();
+        long endTime = startTime + timeoutMs;
+
+        synchronized (messageWaitLock) {
+            while (System.currentTimeMillis() < endTime) {
+                int messageCount = groupManager.getMessages(groupId).size();
+                if (messageCount >= expectedMessageCount) {
+                    return true;
+                }
+
+                try {
+                    long waitTime = endTime - System.currentTimeMillis();
+                    if (waitTime > 0) {
+                        messageWaitLock.wait(waitTime);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
             }
         }
         return false;
     }
 
     /**
-     * Waits for a group to be created/received, with polling and timeout.
-     * Returns true if the group exists, false if timeout.
-     *
-     * @param groupId        The group ID to wait for (or null to wait for any
-     *                       group)
-     * @param timeoutMs      Maximum time to wait in milliseconds
-     * @param pollIntervalMs Time between checks in milliseconds
-     * @return true if group found, false if timeout
+     * Waits for a group to be created/received.
      */
-    public boolean waitForGroup(String groupId, long timeoutMs, long pollIntervalMs) {
+    public boolean waitForGroup(String groupId, long timeoutMs) {
         long startTime = System.currentTimeMillis();
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            if (groupId != null) {
-                if (groupManager.getGroup(groupId) != null) {
-                    return true;
+        long endTime = startTime + timeoutMs;
+
+        synchronized (groupWaitLock) {
+            while (System.currentTimeMillis() < endTime) {
+                if (groupId != null) {
+                    if (groupManager.getGroup(groupId) != null) {
+                        return true;
+                    }
+                } else {
+                    if (!groupManager.getGroups().isEmpty()) {
+                        return true;
+                    }
                 }
-            } else {
-                if (!groupManager.getGroups().isEmpty()) {
-                    return true;
+
+                try {
+                    long waitTime = endTime - System.currentTimeMillis();
+                    if (waitTime > 0) {
+                        groupWaitLock.wait(waitTime);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
                 }
-            }
-            try {
-                Thread.sleep(pollIntervalMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
             }
         }
         return false;
@@ -424,28 +470,126 @@ public class PeerController {
 
     /**
      * Waits for election to complete and a new leader to be elected.
-     * Returns true if new leader differs from old leader, false if timeout.
-     *
-     * @param groupId        The group ID
-     * @param oldLeaderId    The previous leader's ID
-     * @param timeoutMs      Maximum time to wait in milliseconds
-     * @param pollIntervalMs Time between checks in milliseconds
-     * @return true if new leader elected, false if timeout
      */
-    public boolean waitForNewLeader(String groupId, String oldLeaderId, long timeoutMs, long pollIntervalMs) {
+    public boolean waitForNewLeader(String groupId, String oldLeaderId, long timeoutMs) {
         long startTime = System.currentTimeMillis();
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            Group group = groupManager.getGroup(groupId);
-            if (group != null && !group.getLeaderId().equals(oldLeaderId)) {
-                return true;
-            }
-            try {
-                Thread.sleep(pollIntervalMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
+        long endTime = startTime + timeoutMs;
+
+        synchronized (electionWaitLock) {
+            while (System.currentTimeMillis() < endTime) {
+                Group group = groupManager.getGroup(groupId);
+                if (group != null && !group.getLeaderId().equals(oldLeaderId)) {
+                    return true;
+                }
+
+                try {
+                    long waitTime = endTime - System.currentTimeMillis();
+                    if (waitTime > 0) {
+                        electionWaitLock.wait(waitTime);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
             }
         }
         return false;
+    }
+
+    // ========== Notification Helpers ==========
+
+    private void notifyLog(String message) {
+        for (PeerEventListener listener : listeners) {
+            listener.onLog(message);
+        }
+    }
+
+    private void notifyError(String message, Throwable t) {
+        for (PeerEventListener listener : listeners) {
+            listener.onError(message, t);
+        }
+    }
+
+    // ========== Internal Accessors (for testing) ==========
+
+    public VectorClock getVectorClock() {
+        return vectorClock;
+    }
+
+    public MessageHandler getMessageHandler() {
+        return messageHandler;
+    }
+
+    public GroupManager getGroupManager() {
+        return groupManager;
+    }
+
+    public GossipManager getGossipManager() {
+        return gossipManager;
+    }
+
+    public LeaderElectionManager getElectionManager() {
+        return electionManager;
+    }
+
+    public boolean isStarted() {
+        return started;
+    }
+
+    // ========== Test Support ==========
+
+    public void simulateNetworkFailure() {
+        rmiServer.stop();
+    }
+
+    public void restoreNetwork() throws Exception {
+        rmiServer.start(this);
+    }
+
+    // ========== Internal Listener for Synchronization ==========
+
+    private class InternalEventListener implements PeerEventListener {
+        @Override
+        public void onFriendRequest(User requester) {
+        }
+
+        @Override
+        public void onFriendRequestAccepted(User accepter) {
+        }
+
+        @Override
+        public void onMessageReceived(Message message) {
+            if (message.getTopic() == MessageTopic.GROUP) {
+                synchronized (messageWaitLock) {
+                    messageWaitLock.notifyAll();
+                }
+            }
+        }
+
+        @Override
+        public void onGroupInvitation(GroupInvitationRequest request) {
+        }
+
+        @Override
+        public void onGroupEvent(String groupId, String eventType, String message) {
+            synchronized (groupWaitLock) {
+                groupWaitLock.notifyAll();
+            }
+        }
+
+        @Override
+        public void onLeaderElected(String groupId, String leaderId, long epoch) {
+            synchronized (electionWaitLock) {
+                electionWaitLock.notifyAll();
+            }
+        }
+
+        @Override
+        public void onError(String message, Throwable t) {
+        }
+
+        @Override
+        public void onLog(String message) {
+        }
     }
 }

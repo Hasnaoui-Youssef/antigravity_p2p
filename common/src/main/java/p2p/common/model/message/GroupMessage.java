@@ -1,6 +1,6 @@
 package p2p.common.model.message;
 
-import p2p.common.model.MessageType;
+import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
 import p2p.common.vectorclock.VectorClock;
 
@@ -20,8 +20,8 @@ public final class GroupMessage extends Message {
     private final VectorClock vectorClock;
 
     public GroupMessage(String messageId, String senderId, String senderUsername,
-                        String groupId, String content, long timestamp, VectorClock vectorClock) {
-        super(messageId, senderId, timestamp, MessageType.GROUP);
+            String groupId, String content, long timestamp, VectorClock vectorClock) {
+        super(messageId, senderId, timestamp, MessageTopic.GROUP);
         this.senderUsername = Objects.requireNonNull(senderUsername);
         this.groupId = Objects.requireNonNull(groupId);
         this.content = Objects.requireNonNull(content);
@@ -30,14 +30,13 @@ public final class GroupMessage extends Message {
 
     public static GroupMessage create(User sender, String groupId, String content, VectorClock clock) {
         return new GroupMessage(
-            UUID.randomUUID().toString(),
-            sender.getUserId(),
-            sender.getUsername(),
-            groupId,
-            content,
-            Instant.now().toEpochMilli(),
-            clock
-        );
+                UUID.randomUUID().toString(),
+                sender.getUserId(),
+                sender.getUsername(),
+                groupId,
+                content,
+                Instant.now().toEpochMilli(),
+                clock);
     }
 
     public String getGroupId() {
@@ -59,6 +58,6 @@ public final class GroupMessage extends Message {
     @Override
     public String toString() {
         return String.format("GroupMessage{id='%s', group='%s', from='%s', content='%s'}",
-            messageId, groupId, senderUsername, content);
+                messageId, groupId, senderUsername, content);
     }
 }

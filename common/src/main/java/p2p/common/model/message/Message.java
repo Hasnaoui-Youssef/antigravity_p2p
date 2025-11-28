@@ -1,6 +1,6 @@
 package p2p.common.model.message;
 
-import p2p.common.model.MessageType;
+import p2p.common.model.MessageTopic;
 
 import java.io.Serializable;
 import java.util.Objects;
@@ -14,13 +14,13 @@ public abstract class Message implements Serializable {
     protected final String messageId;
     protected final String senderId;
     protected final long timestamp;
-    protected final MessageType type;
+    protected final MessageTopic topic;
 
-    protected Message(String messageId, String senderId, long timestamp, MessageType type) {
+    protected Message(String messageId, String senderId, long timestamp, MessageTopic type) {
         this.messageId = Objects.requireNonNull(messageId);
         this.senderId = Objects.requireNonNull(senderId);
         this.timestamp = timestamp;
-        this.type = Objects.requireNonNull(type);
+        this.topic = Objects.requireNonNull(type);
     }
 
     public String getMessageId() {
@@ -35,8 +35,8 @@ public abstract class Message implements Serializable {
         return timestamp;
     }
 
-    public MessageType getType() {
-        return type;
+    public MessageTopic getTopic() {
+        return topic;
     }
 
     @Override
@@ -56,6 +56,6 @@ public abstract class Message implements Serializable {
 
     @Override
     public String toString() {
-        return String.format("Message{id='%s', type=%s, sender='%s'}", messageId, type, senderId);
+        return String.format("Message{id='%s', topic=%s, sender='%s'}", messageId, topic, senderId);
     }
 }

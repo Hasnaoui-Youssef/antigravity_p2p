@@ -7,6 +7,7 @@ import p2p.common.model.Group;
 import p2p.common.model.message.GroupInvitationResponse;
 import p2p.common.rmi.BootstrapService;
 import p2p.peer.PeerController;
+import p2p.common.model.User;
 
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
@@ -97,9 +98,31 @@ class GroupChatIntegrationTest {
 
     private void makeFriends(PeerController p1, PeerController p2) throws Exception {
         p1.sendFriendRequest(p2.getLocalUser().getUsername());
-        Thread.sleep(100);
+
+        // Wait for request to arrive
+        long deadline = System.currentTimeMillis() + 2000;
+        while (System.currentTimeMillis() < deadline) {
+            if (p2.getPendingRequests().stream()
+                    .anyMatch(u -> u.getUsername().equals(p1.getLocalUser().getUsername()))) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+
         p2.acceptFriendRequest(p1.getLocalUser().getUsername());
-        Thread.sleep(100);
+
+        // Wait for friendship to be established on both sides
+        deadline = System.currentTimeMillis() + 2000;
+        while (System.currentTimeMillis() < deadline) {
+            boolean p1HasP2 = p1.getFriends().stream()
+                    .anyMatch(u -> u.getUsername().equals(p2.getLocalUser().getUsername()));
+            boolean p2HasP1 = p2.getFriends().stream()
+                    .anyMatch(u -> u.getUsername().equals(p1.getLocalUser().getUsername()));
+            if (p1HasP2 && p2HasP1) {
+                break;
+            }
+            Thread.sleep(50);
+        }
     }
 
     // ==========================================================================
@@ -348,11 +371,11 @@ class GroupChatIntegrationTest {
         String groupId = tempGroup.getGroupId();
 
         // Use polling for all peers to receive the group
-        assertTrue(bob.waitForGroup(groupId, 10000, 200), "Bob should receive group");
-        assertTrue(charlie.waitForGroup(groupId, 10000, 200), "Charlie should receive group");
-        assertTrue(david.waitForGroup(groupId, 10000, 200), "David should receive group");
-        assertTrue(eve.waitForGroup(groupId, 10000, 200), "Eve should receive group");
-        assertTrue(frank.waitForGroup(groupId, 10000, 200), "Frank should receive group");
+        assertTrue(bob.waitForGroup(groupId, 10000), "Bob should receive group");
+        assertTrue(charlie.waitForGroup(groupId, 10000), "Charlie should receive group");
+        assertTrue(david.waitForGroup(groupId, 10000), "David should receive group");
+        assertTrue(eve.waitForGroup(groupId, 10000), "Eve should receive group");
+        assertTrue(frank.waitForGroup(groupId, 10000), "Frank should receive group");
 
         // Verify all have the group
         assertEquals(1, alice.getGroups().size(), "Alice should have group");
@@ -372,7 +395,7 @@ class GroupChatIntegrationTest {
         peers.remove(alice);
 
         // Use polling to wait for new leader election
-        assertTrue(bob.waitForNewLeader(groupId, oldLeaderId, 15000, 300),
+        assertTrue(bob.waitForNewLeader(groupId, oldLeaderId, 15000),
                 "Bob should see new leader elected");
 
         // Remaining 5 members should have elected a new leader
@@ -522,11 +545,11 @@ class GroupChatIntegrationTest {
         Group tempGroup = alice.createGroup("GossipGroup", List.of("Bob", "Charlie", "David"));
 
         // Use polling instead of fixed sleep for group creation
-        assertTrue(bob.waitForGroup(tempGroup.getGroupId(), 10000, 200),
+        assertTrue(bob.waitForGroup(tempGroup.getGroupId(), 10000),
                 "Bob should receive the group");
-        assertTrue(charlie.waitForGroup(tempGroup.getGroupId(), 10000, 200),
+        assertTrue(charlie.waitForGroup(tempGroup.getGroupId(), 10000),
                 "Charlie should receive the group");
-        assertTrue(david.waitForGroup(tempGroup.getGroupId(), 10000, 200),
+        assertTrue(david.waitForGroup(tempGroup.getGroupId(), 10000),
                 "David should receive the group");
 
         assertEquals(1, alice.getGroups().size());
@@ -540,16 +563,16 @@ class GroupChatIntegrationTest {
         alice.sendGroupMessage(groupId, "Message 2");
 
         // Use polling for Charlie and David to receive messages
-        assertTrue(charlie.waitForMessages(groupId, 2, 5000, 100),
+        assertTrue(charlie.waitForMessages(groupId, 2, 5000),
                 "Charlie should have received messages");
-        assertTrue(david.waitForMessages(groupId, 2, 5000, 100),
+        assertTrue(david.waitForMessages(groupId, 2, 5000),
                 "David should have received messages");
 
         // Heal partition
         bob.restoreNetwork();
 
         // Use polling for Bob to sync via gossip
-        assertTrue(bob.waitForMessages(groupId, 2, 10000, 200),
+        assertTrue(bob.waitForMessages(groupId, 2, 10000),
                 "Bob should have synced messages via gossip");
 
         int bobMessages = bob.getGroupManager().getMessages(groupId).size();
@@ -597,11 +620,11 @@ class GroupChatIntegrationTest {
         Group tempGroup = alice.createGroup("SyncGroup", List.of("Bob", "Charlie", "David", "Eve", "Frank"));
 
         // Use polling for all peers to receive the group
-        assertTrue(bob.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Bob should receive group");
-        assertTrue(charlie.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Charlie should receive group");
-        assertTrue(david.waitForGroup(tempGroup.getGroupId(), 10000, 200), "David should receive group");
-        assertTrue(eve.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Eve should receive group");
-        assertTrue(frank.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Frank should receive group");
+        assertTrue(bob.waitForGroup(tempGroup.getGroupId(), 10000), "Bob should receive group");
+        assertTrue(charlie.waitForGroup(tempGroup.getGroupId(), 10000), "Charlie should receive group");
+        assertTrue(david.waitForGroup(tempGroup.getGroupId(), 10000), "David should receive group");
+        assertTrue(eve.waitForGroup(tempGroup.getGroupId(), 10000), "Eve should receive group");
+        assertTrue(frank.waitForGroup(tempGroup.getGroupId(), 10000), "Frank should receive group");
 
         assertEquals(1, alice.getGroups().size());
         String groupId = tempGroup.getGroupId();
@@ -618,8 +641,8 @@ class GroupChatIntegrationTest {
         alice.sendGroupMessage(groupId, "Message 3 - All 3 offline");
 
         // Use polling for Bob and Frank to receive messages
-        assertTrue(bob.waitForMessages(groupId, 3, 5000, 100), "Bob should have all 3 messages");
-        assertTrue(frank.waitForMessages(groupId, 3, 5000, 100), "Frank should have all 3 messages");
+        assertTrue(bob.waitForMessages(groupId, 3, 5000), "Bob should have all 3 messages");
+        assertTrue(frank.waitForMessages(groupId, 3, 5000), "Frank should have all 3 messages");
 
         // Restore all 3 peers one at a time with gaps
         charlie.restoreNetwork();
@@ -630,11 +653,11 @@ class GroupChatIntegrationTest {
 
         // Use polling with longer timeout for all 3 to sync messages
         // The gossip cycle runs every 1 second and might need several rounds
-        assertTrue(charlie.waitForMessages(groupId, 3, 20000, 500),
+        assertTrue(charlie.waitForMessages(groupId, 3, 20000),
                 "Charlie should have synced all messages");
-        assertTrue(david.waitForMessages(groupId, 3, 20000, 500),
+        assertTrue(david.waitForMessages(groupId, 3, 20000),
                 "David should have synced all messages");
-        assertTrue(eve.waitForMessages(groupId, 3, 20000, 500),
+        assertTrue(eve.waitForMessages(groupId, 3, 20000),
                 "Eve should have synced all messages");
 
         int charlieMessages = charlie.getGroupManager().getMessages(groupId).size();

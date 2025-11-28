@@ -1,6 +1,6 @@
 package p2p.common.model.message;
 
-import p2p.common.model.MessageType;
+import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
 import p2p.common.vectorclock.VectorClock;
 
@@ -20,8 +20,8 @@ public final class DirectMessage extends Message {
     private final VectorClock vectorClock;
 
     public DirectMessage(String messageId, String senderId, String senderUsername,
-                         String receiverId, String content, long timestamp, VectorClock vectorClock) {
-        super(messageId, senderId, timestamp, MessageType.DIRECT);
+            String receiverId, String content, long timestamp, VectorClock vectorClock) {
+        super(messageId, senderId, timestamp, MessageTopic.DIRECT);
         this.senderUsername = Objects.requireNonNull(senderUsername);
         this.receiverId = Objects.requireNonNull(receiverId);
         this.content = Objects.requireNonNull(content);
@@ -30,14 +30,13 @@ public final class DirectMessage extends Message {
 
     public static DirectMessage create(User sender, String receiverId, String content, VectorClock clock) {
         return new DirectMessage(
-            UUID.randomUUID().toString(),
-            sender.getUserId(),
-            sender.getUsername(),
-            receiverId,
-            content,
-            Instant.now().toEpochMilli(),
-            clock
-        );
+                UUID.randomUUID().toString(),
+                sender.getUserId(),
+                sender.getUsername(),
+                receiverId,
+                content,
+                Instant.now().toEpochMilli(),
+                clock);
     }
 
     public String getSenderUsername() {
@@ -59,6 +58,6 @@ public final class DirectMessage extends Message {
     @Override
     public String toString() {
         return String.format("DirectMessage{id='%s', from='%s', to='%s', content='%s'}",
-            messageId, senderUsername, receiverId, content);
+                messageId, senderUsername, receiverId, content);
     }
 }
