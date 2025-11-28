@@ -645,7 +645,7 @@ class GroupChatIntegrationTest {
     // ==========================================================================
     
     @Test
-    @DisplayName("11. Multiple users can create different groups concurrently")
+    @DisplayName("10. Multiple users can create different groups concurrently")
     void testConcurrentGroupCreations() throws Exception {
         PeerController alice = createPeer("Alice", getNextPort());
         PeerController bob = createPeer("Bob", getNextPort());

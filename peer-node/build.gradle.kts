@@ -12,3 +12,17 @@ dependencies {
 application {
     mainClass.set("p2p.peer.PeerNode")
 }
+
+tasks.withType<Jar> {
+    manifest {
+        attributes["Main-Class"] = "p2p.peer.PeerNode"
+    }
+    
+    // To create a "fat jar" that includes all dependencies
+    from(sourceSets.main.get().output)
+    dependsOn(configurations.runtimeClasspath)
+    from({
+        configurations.runtimeClasspath.get().filter { it.name.endsWith("jar") }.map { zipTree(it) }
+    })
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
