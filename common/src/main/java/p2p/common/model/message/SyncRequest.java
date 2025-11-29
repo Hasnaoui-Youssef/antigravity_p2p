@@ -17,7 +17,7 @@ public final class SyncRequest extends Message {
     private final VectorClock lastKnownState;
 
     public SyncRequest(String messageId, String senderId, long timestamp, String groupId, VectorClock lastKnownState) {
-        super(messageId, senderId, timestamp, MessageTopic.SYNC_REQUEST);
+        super(messageId, senderId, timestamp, MessageTopic.SYNC_REQUEST, lastKnownState);
         this.groupId = Objects.requireNonNull(groupId);
         this.lastKnownState = Objects.requireNonNull(lastKnownState).clone();
     }
