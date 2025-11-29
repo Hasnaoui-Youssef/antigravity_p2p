@@ -1,5 +1,6 @@
 package p2p.peer.messaging;
 
+import p2p.common.model.message.ChatMessage;
 import p2p.common.model.message.DirectMessage;
 import p2p.common.model.User;
 import p2p.common.rmi.PeerService;
@@ -44,8 +45,8 @@ public class MessageHandler {
             vectorClock.increment(localUser.getUserId());
         }
         
-        // Create message
-        DirectMessage message = DirectMessage.create(localUser, recipient.getUserId(), content, vectorClock.clone());
+        // Create message using the new ChatMessage type
+        ChatMessage message = ChatMessage.createDirect(localUser, recipient.getUserId(), content, vectorClock.clone());
         
         // Send via RMI
         Registry registry = LocateRegistry.getRegistry(recipient.getIpAddress(), recipient.getRmiPort());
@@ -58,8 +59,23 @@ public class MessageHandler {
     }
     
     /**
-     * Handle incoming message (called by RMI).
+     * Handle incoming ChatMessage (new unified type).
      */
+    public void handleIncomingChatMessage(ChatMessage message) {
+        String time = TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimestamp()));
+        System.out.println("\n[" + time + "] " + message.getSenderUsername() + ": " + message.getContent());
+        VectorClock msgClock = message.getVectorClock();
+        if (msgClock != null) {
+            System.out.println("Vector Clock: " + msgClock);
+        }
+        System.out.print("> ");
+    }
+    
+    /**
+     * Handle incoming message (called by RMI).
+     * @deprecated Use handleIncomingChatMessage instead
+     */
+    @Deprecated
     public void handleIncomingMessage(DirectMessage message) {
         String time = TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimestamp()));
         System.out.println("\n[" + time + "] " + message.getSenderUsername() + ": " + message.getContent());

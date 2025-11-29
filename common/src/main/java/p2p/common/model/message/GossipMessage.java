@@ -20,16 +20,14 @@ public final class GossipMessage extends Message {
 
     private final String groupId;
     private final String senderUsername;
-    private final VectorClock vectorClock;
     // Leader liveness: groupId -> last seen timestamp
     private final Map<String, Long> leaderLastSeen;
 
     public GossipMessage(String messageId, String senderId, String senderUsername, String groupId, long timestamp,
             VectorClock vectorClock, Map<String, Long> leaderLastSeen) {
-        super(messageId, senderId, timestamp, MessageTopic.GOSSIP);
+        super(messageId, senderId, timestamp, MessageTopic.GOSSIP, vectorClock);
         this.senderUsername = Objects.requireNonNull(senderUsername);
         this.groupId = Objects.requireNonNull(groupId);
-        this.vectorClock = Objects.requireNonNull(vectorClock).clone();
         this.leaderLastSeen = leaderLastSeen != null ? Collections.unmodifiableMap(new HashMap<>(leaderLastSeen))
                 : Collections.emptyMap();
     }
@@ -65,8 +63,10 @@ public final class GossipMessage extends Message {
         return senderUsername;
     }
 
+    @Override
     public VectorClock getVectorClock() {
-        return vectorClock.clone();
+        VectorClock clock = super.getVectorClock();
+        return clock != null ? clock.clone() : null;
     }
 
     public Map<String, Long> getLeaderLastSeen() {
@@ -76,6 +76,6 @@ public final class GossipMessage extends Message {
     @Override
     public String toString() {
         return String.format("GossipMessage{id='%s', group='%s', from='%s', clock=%s, leaderLastSeen=%s}",
-                messageId, groupId, senderUsername, vectorClock, leaderLastSeen);
+                messageId, groupId, senderUsername, getVectorClock(), leaderLastSeen);
     }
 }

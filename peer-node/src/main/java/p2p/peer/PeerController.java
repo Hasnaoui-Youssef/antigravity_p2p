@@ -237,7 +237,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             throw new IllegalArgumentException("Not a member of group: " + groupId);
         }
 
-        GroupMessage message = GroupMessage.create(localUser, groupId, content, vectorClock);
+        ChatMessage message = ChatMessage.createGroup(localUser, groupId, content, vectorClock);
         vectorClock.increment(localUser.getUserId());
 
         // Store message locally first
@@ -297,6 +297,11 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         System.out.println("[DEBUG] " + localUser.getUsername() + " received message: " + message.getTopic() + " from "
                 + message.getSenderId());
         switch (message.getTopic()) {
+            // New unified message types
+            case CHAT -> handleChatMessage((ChatMessage) message);
+            case GROUP_INVITATION -> handleGroupInvitation((GroupInvitationMessage) message);
+            
+            // Legacy message types (deprecated but kept for backwards compatibility)
             case DIRECT -> handleDirectMessage((DirectMessage) message);
             case GROUP -> handleGroupMessage((GroupMessage) message);
             case GOSSIP -> handleGossipMessage((GossipMessage) message);
@@ -337,6 +342,37 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
     }
 
     // ========== Message Handling Helpers ==========
+
+    private void handleChatMessage(ChatMessage message) {
+        synchronized (vectorClock) {
+            VectorClock msgClock = message.getVectorClock();
+            if (msgClock != null) {
+                vectorClock.update(msgClock);
+            }
+        }
+        
+        if (message.getSubtopic() == ChatSubtopic.DIRECT) {
+            messageHandler.handleIncomingChatMessage(message);
+        } else {
+            // GROUP message
+            groupManager.addMessage(message.getGroupId(), message);
+            
+            Group group = groupManager.getGroup(message.getGroupId());
+            if (group != null && message.getSenderId().equals(group.getLeaderId())) {
+                electionManager.recordLeaderActivity(message.getGroupId());
+            }
+        }
+    }
+
+    private void handleGroupInvitation(GroupInvitationMessage message) {
+        System.out.println("[DEBUG] " + localUser.getUsername() + " handling group invitation: " 
+                + message.getSubtopic() + " from " + message.getSenderId());
+        
+        switch (message.getSubtopic()) {
+            case REQUEST -> groupManager.handleInvitationRequest(message);
+            case ACCEPT, REJECT -> groupManager.handleInvitationResponse(message);
+        }
+    }
 
     private void handleFriendshipMessage(FriendMessage message) {
         switch (message.getFriendMessageType()) {
