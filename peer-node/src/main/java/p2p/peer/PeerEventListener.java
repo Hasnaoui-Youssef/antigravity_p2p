@@ -1,16 +1,13 @@
 package p2p.peer;
 
 import p2p.common.model.User;
-import p2p.common.model.message.GroupInvitationRequest;
+import p2p.common.model.message.GroupInvitationMessage;
 import p2p.common.model.message.Message;
 
 /**
  * Listener interface for peer events.
  * Decouples the business logic from the UI/Presentation layer.
- * 
- * @deprecated Use {@link p2p.peer.event.PeerEventListener} instead for the comprehensive event interface.
  */
-@Deprecated
 public interface PeerEventListener {
 
     /**
@@ -31,7 +28,7 @@ public interface PeerEventListener {
     /**
      * Called when a group invitation is received.
      */
-    void onGroupInvitation(GroupInvitationRequest request);
+    void onGroupInvitation(GroupInvitationMessage request);
 
     /**
      * Called when a generic group event occurs (created, dissolved, member
