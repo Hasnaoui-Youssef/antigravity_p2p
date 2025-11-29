@@ -72,15 +72,11 @@ public class OrderedMessageStore {
                 continue;
             }
             
-            // Check if message clock is strictly after 'since' clock
-            // A message is "after" if its clock does not happen-before since
-            // AND since does happen-before it (or they're concurrent with msg having higher values)
-            if (!msgClock.happensBefore(since) && !msgClock.equals(since)) {
-                // The message either happens after since, or is concurrent with it
-                // but has some component that is greater
-                if (since.happensBefore(msgClock)) {
-                    result.add(message);
-                }
+            // A message happened "after" the since clock if:
+            // since.happensBefore(msgClock) is true
+            // This means the message clock is causally after the since clock
+            if (since.happensBefore(msgClock)) {
+                result.add(message);
             }
         }
         
