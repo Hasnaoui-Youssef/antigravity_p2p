@@ -63,19 +63,17 @@ class CausalOrderComparatorTest {
     }
 
     @Test
-    @DisplayName("Same sender uses message ID as tiebreaker")
-    void testSameSenderMessageIdTiebreaker() {
+    @DisplayName("Same sender with concurrent clocks throws exception")
+    void testSameSenderConcurrentClocksThrowsException() {
         VectorClock clock = createClock(SENDER_A, 1);
         
-        // Same sender, same clock, but different message IDs
+        // Same sender, same clock - this is invalid and should throw
         ChatMessage msg1 = createTestMessage(SENDER_A, "aaa-msg", "First", clock);
         ChatMessage msg2 = createTestMessage(SENDER_A, "bbb-msg", "Second", clock);
         
-        // aaa-msg < bbb-msg lexicographically
-        assertTrue(comparator.compare(msg1, msg2) < 0, 
-            "Message with smaller ID should come first");
-        assertTrue(comparator.compare(msg2, msg1) > 0, 
-            "Message with larger ID should come after");
+        // Messages from the same sender should always have a happens-before relationship
+        assertThrows(IllegalStateException.class, () -> comparator.compare(msg1, msg2),
+            "Concurrent messages from the same sender should throw IllegalStateException");
     }
 
     @Test
@@ -124,15 +122,27 @@ class CausalOrderComparatorTest {
     }
 
     @Test
-    @DisplayName("Messages with null clocks are compared by timestamp and sender")
+    @DisplayName("Messages with null clocks are compared by sender ID")
     void testNullClockFallback() {
-        // This tests edge case handling
+        // This tests edge case handling - empty/null clocks use sender ID comparison
         ChatMessage msg1 = createTestMessageNullClock(SENDER_A, "msg1", "First");
         ChatMessage msg2 = createTestMessageNullClock(SENDER_B, "msg2", "Second");
         
-        // Should fall back to comparing sender IDs
+        // Should fall back to comparing sender IDs (senderA < senderB)
         assertTrue(comparator.compare(msg1, msg2) < 0,
             "Without clocks, should use sender ID as tiebreaker");
+    }
+
+    @Test
+    @DisplayName("Messages from same sender with null clocks use message ID tiebreaker")
+    void testNullClockSameSenderFallback() {
+        // Null/empty clocks from same sender fall back to message ID
+        ChatMessage msg1 = createTestMessageNullClock(SENDER_A, "aaa-msg", "First");
+        ChatMessage msg2 = createTestMessageNullClock(SENDER_A, "bbb-msg", "Second");
+        
+        // Should fall back to comparing message IDs
+        assertTrue(comparator.compare(msg1, msg2) < 0,
+            "Without clocks and same sender, should use message ID as tiebreaker");
     }
 
     @Test

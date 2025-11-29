@@ -346,19 +346,19 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         if (message.getSubtopic() == ChatSubtopic.DIRECT) {
             // Handle direct message
             messageHandler.handleIncomingChatMessage(message);
-            
-            // Notify listeners
-            for (PeerEventListener listener : listeners) {
-                listener.onMessageReceived(message);
-            }
         } else {
-            // GROUP message - GroupManager.addMessage will notify listeners
+            // GROUP message
             groupManager.addMessage(message.getGroupId(), message);
             
             Group group = groupManager.getGroup(message.getGroupId());
             if (group != null && message.getSenderId().equals(group.getLeaderId())) {
                 electionManager.recordLeaderActivity(message.getGroupId());
             }
+        }
+        
+        // Notify all listeners for both DIRECT and GROUP messages
+        for (PeerEventListener listener : listeners) {
+            listener.onMessageReceived(message);
         }
     }
 

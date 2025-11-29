@@ -23,13 +23,20 @@ public final class GroupInvitationMessage extends Message {
     private final String groupName;
     private final List<User> potentialMembers;  // Only populated for REQUEST
 
-    public GroupInvitationMessage(String messageId, String senderId, long timestamp,
+    private GroupInvitationMessage(String messageId, String senderId, long timestamp,
             GroupInvitationSubtopic subtopic, String groupId, String groupName,
             List<User> potentialMembers, VectorClock vectorClock) {
         super(messageId, senderId, timestamp, MessageTopic.GROUP_INVITATION, vectorClock);
         this.subtopic = Objects.requireNonNull(subtopic);
         this.groupId = Objects.requireNonNull(groupId);
         this.groupName = groupName;  // May be null for responses
+        
+        // Validate that potentialMembers is only provided for REQUEST subtopic
+        if (potentialMembers != null && subtopic != GroupInvitationSubtopic.REQUEST) {
+            throw new IllegalStateException(
+                "potentialMembers should only be provided for REQUEST subtopic, not " + subtopic);
+        }
+        
         this.potentialMembers = potentialMembers != null 
             ? Collections.unmodifiableList(potentialMembers) 
             : null;
@@ -95,9 +102,14 @@ public final class GroupInvitationMessage extends Message {
 
     /**
      * Gets the potential members for invitation requests.
-     * @return list of potential members, or null if this is a response
+     * @return list of potential members
+     * @throws IllegalStateException if this is not a REQUEST message
      */
     public List<User> getPotentialMembers() {
+        if (subtopic != GroupInvitationSubtopic.REQUEST) {
+            throw new IllegalStateException(
+                "potentialMembers is only available for REQUEST subtopic, not " + subtopic);
+        }
         return potentialMembers;
     }
 

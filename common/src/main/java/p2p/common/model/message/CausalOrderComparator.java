@@ -12,7 +12,7 @@ import java.util.Comparator;
  * 1. If m1.clock.happensBefore(m2.clock) → m1 comes before m2
  * 2. If m2.clock.happensBefore(m1.clock) → m2 comes before m1
  * 3. If concurrent (neither happens-before): compare sender IDs lexicographically
- * 4. If same sender: compare message IDs lexicographically
+ * 4. If same sender with concurrent clocks: throw IllegalStateException (this is a bug)
  */
 public class CausalOrderComparator implements Comparator<Message> {
 
@@ -25,10 +25,10 @@ public class CausalOrderComparator implements Comparator<Message> {
         VectorClock clock1 = m1.getVectorClock();
         VectorClock clock2 = m2.getVectorClock();
         
-        // Handle null clocks by treating them as "empty" clocks
-        boolean hasClocks = clock1 != null && clock2 != null;
+        // Check if both messages have meaningful (non-empty) clocks
+        boolean hasMeaningfulClocks = hasEntries(clock1) && hasEntries(clock2);
         
-        if (hasClocks) {
+        if (hasMeaningfulClocks) {
             // Check for happens-before relationship
             if (clock1.happensBefore(clock2)) {
                 return -1;  // m1 comes before m2
@@ -46,7 +46,26 @@ public class CausalOrderComparator implements Comparator<Message> {
             return senderCompare;
         }
         
-        // Same sender: use message ID as final tiebreaker
+        // Same sender with concurrent messages indicates a failure - messages from
+        // the same sender should always have a happens-before relationship
+        if (hasMeaningfulClocks) {
+            throw new IllegalStateException(
+                "Messages from the same sender should never be concurrent. " +
+                "Sender: " + m1.getSenderId() + ", Messages: " + m1.getMessageId() + ", " + m2.getMessageId());
+        }
+        
+        // Only use message ID as tiebreaker when clocks are null/empty (fallback for legacy messages)
         return m1.getMessageId().compareTo(m2.getMessageId());
+    }
+    
+    /**
+     * Check if a VectorClock has any entries (is not null or empty).
+     */
+    private boolean hasEntries(VectorClock clock) {
+        if (clock == null) {
+            return false;
+        }
+        // Check if the clock has at least one entry
+        return !clock.getClockSnapshot().isEmpty();
     }
 }

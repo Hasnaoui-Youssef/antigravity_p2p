@@ -403,7 +403,8 @@ public class GroupManager {
     }
 
     /**
-     * Adds a message to the group history and notifies listeners.
+     * Adds a message to the group history.
+     * Note: Listener notification is handled by PeerController.handleChatMessage()
      */
     public void addMessage(String groupId, Message message) {
         List<Message> messages = groupMessages.computeIfAbsent(groupId, k -> new ArrayList<>());
@@ -412,11 +413,6 @@ public class GroupManager {
                 .anyMatch(m -> m.getMessageId().equals(message.getMessageId()));
         if (!exists) {
             messages.add(message);
-            
-            // Notify listeners about the new message
-            for (PeerEventListener listener : listeners) {
-                listener.onMessageReceived(message);
-            }
         }
     }
 
