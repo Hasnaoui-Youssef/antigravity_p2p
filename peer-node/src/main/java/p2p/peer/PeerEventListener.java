@@ -7,7 +7,10 @@ import p2p.common.model.message.Message;
 /**
  * Listener interface for peer events.
  * Decouples the business logic from the UI/Presentation layer.
+ * 
+ * @deprecated Use {@link p2p.peer.event.PeerEventListener} instead for the comprehensive event interface.
  */
+@Deprecated
 public interface PeerEventListener {
 
     /**
