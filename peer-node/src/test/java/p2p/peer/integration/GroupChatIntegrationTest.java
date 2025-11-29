@@ -4,7 +4,9 @@ import org.junit.jupiter.api.*;
 import p2p.bootstrap.BootstrapServiceImpl;
 import p2p.bootstrap.UserRegistry;
 import p2p.common.model.Group;
-import p2p.common.model.message.GroupInvitationResponse;
+import p2p.common.model.message.GroupInvitationMessage;
+import p2p.common.model.message.Message;
+import p2p.peer.PeerEventListener;
 import p2p.common.rmi.BootstrapService;
 import p2p.peer.PeerController;
 import p2p.common.model.User;
@@ -125,6 +127,55 @@ class GroupChatIntegrationTest {
         }
     }
 
+    /**
+     * Add an auto-accept listener to a peer that accepts all group invitations automatically.
+     */
+    private void autoAcceptInvitations(PeerController peer) {
+        peer.addEventListener(new PeerEventListener() {
+            @Override
+            public void onGroupInvitation(GroupInvitationMessage request) {
+                try {
+                    peer.acceptGroupInvitation(request.getGroupId());
+                } catch (Exception e) {
+                    System.err.println("Failed to auto-accept invitation: " + e.getMessage());
+                }
+            }
+
+            @Override public void onFriendRequest(User requester) {}
+            @Override public void onFriendRequestAccepted(User accepter) {}
+            @Override public void onMessageReceived(Message message) {}
+            @Override public void onGroupEvent(String groupId, String eventType, String message) {}
+            @Override public void onLeaderElected(String groupId, String leaderId, long epoch) {}
+            @Override public void onError(String message, Throwable t) {}
+            @Override public void onLog(String message) {}
+        });
+    }
+
+    /**
+     * Add a reject listener to a peer that rejects all group invitations automatically.
+     */
+    private void autoRejectInvitations(PeerController peer) {
+        peer.addEventListener(new PeerEventListener() {
+            @Override
+            public void onGroupInvitation(GroupInvitationMessage request) {
+                try {
+                    peer.rejectGroupInvitation(request.getGroupId());
+                } catch (Exception e) {
+                    System.err.println("Failed to auto-reject invitation: " + e.getMessage());
+                }
+            }
+
+            @Override public void onFriendRequest(User requester) {}
+            @Override public void onFriendRequestAccepted(User accepter) {}
+            @Override public void onMessageReceived(Message message) {}
+            @Override public void onGroupEvent(String groupId, String eventType, String message) {}
+            @Override public void onLeaderElected(String groupId, String leaderId, long epoch) {}
+            @Override public void onError(String message, Throwable t) {}
+            @Override public void onLog(String message) {}
+        });
+    }
+
+
     // ==========================================================================
     // TEST 1: Successful group creation with invitations accepted
     // ==========================================================================
@@ -137,9 +188,9 @@ class GroupChatIntegrationTest {
         PeerController charlie = createPeer("Charlie", getNextPort());
 
         // Set auto-accept handlers for all
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
 
         // Establish friendships (required for group invitations)
         makeFriends(alice, bob);
@@ -198,9 +249,9 @@ class GroupChatIntegrationTest {
         makeFriends(alice, charlie);
 
         // Set acceptance behavior: Bob accepts, Charlie rejects
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED); // Bob accepts
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.REJECTED); // Charlie REJECTS
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob); // Bob accepts
+        autoRejectInvitations(charlie); // Charlie REJECTS
 
         // Alice creates group
         alice.createGroup("FailGroup", List.of("Bob", "Charlie"));
@@ -235,9 +286,9 @@ class GroupChatIntegrationTest {
 
         // Set handlers: Alice and Bob have handlers, Charlie doesn't (will default
         // reject)
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.REJECTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoRejectInvitations(charlie);
 
         // Alice creates group
         alice.createGroup("TimeoutGroup", List.of("Bob", "Charlie"));
@@ -288,9 +339,9 @@ class GroupChatIntegrationTest {
         PeerController charlie = createPeer("Charlie", getNextPort());
 
         // Set all as auto-accept
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
 
         makeFriends(alice, bob);
         makeFriends(alice, charlie);
@@ -343,12 +394,12 @@ class GroupChatIntegrationTest {
         PeerController frank = createPeer("Frank", getNextPort());
 
         // Set all as auto-accept
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        david.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        eve.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        frank.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+        autoAcceptInvitations(david);
+        autoAcceptInvitations(eve);
+        autoAcceptInvitations(frank);
 
         // Create friendships (Alice with all others)
         makeFriends(alice, bob);
@@ -448,9 +499,9 @@ class GroupChatIntegrationTest {
         PeerController charlie = createPeer("Charlie", getNextPort());
 
         // Set all as auto-accept
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
 
         makeFriends(alice, bob);
         makeFriends(alice, charlie);
@@ -530,10 +581,10 @@ class GroupChatIntegrationTest {
         PeerController charlie = createPeer("Charlie", getNextPort());
         PeerController david = createPeer("David", getNextPort());
 
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        david.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+        autoAcceptInvitations(david);
 
         makeFriends(alice, bob);
         makeFriends(alice, charlie);
@@ -594,12 +645,12 @@ class GroupChatIntegrationTest {
         PeerController eve = createPeer("Eve", getNextPort());
         PeerController frank = createPeer("Frank", getNextPort());
 
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        david.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        eve.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        frank.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+        autoAcceptInvitations(david);
+        autoAcceptInvitations(eve);
+        autoAcceptInvitations(frank);
 
         // Create friendships
         makeFriends(alice, bob);
@@ -681,10 +732,10 @@ class GroupChatIntegrationTest {
         PeerController david = createPeer("David", getNextPort());
 
         // Set all as auto-accept
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        david.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+        autoAcceptInvitations(david);
 
         makeFriends(alice, bob);
         makeFriends(alice, charlie);
@@ -749,7 +800,7 @@ class GroupChatIntegrationTest {
         // Set all as auto-accept
         List<PeerController> allPeers = List.of(alice, bob, charlie, david, eve);
         for (PeerController peer : allPeers) {
-            peer.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+            autoAcceptInvitations(peer);
         }
 
         // Make all friends
