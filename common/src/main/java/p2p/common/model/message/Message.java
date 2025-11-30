@@ -1,6 +1,7 @@
 package p2p.common.model.message;
 
 import p2p.common.model.MessageTopic;
+import p2p.common.vectorclock.VectorClock;
 
 import java.io.Serializable;
 import java.util.Objects;
@@ -9,18 +10,24 @@ import java.util.Objects;
  * Abstract base class for all P2P messages.
  */
 public abstract class Message implements Serializable {
-    private static final long serialVersionUID = 2L;
+    private static final long serialVersionUID = 3L;
 
     protected final String messageId;
     protected final String senderId;
     protected final long timestamp;
     protected final MessageTopic topic;
+    protected final VectorClock vectorClock;
 
     protected Message(String messageId, String senderId, long timestamp, MessageTopic type) {
+        this(messageId, senderId, timestamp, type, null);
+    }
+
+    protected Message(String messageId, String senderId, long timestamp, MessageTopic type, VectorClock vectorClock) {
         this.messageId = Objects.requireNonNull(messageId);
         this.senderId = Objects.requireNonNull(senderId);
         this.timestamp = timestamp;
         this.topic = Objects.requireNonNull(type);
+        this.vectorClock = vectorClock != null ? vectorClock.clone() : null;
     }
 
     public String getMessageId() {
@@ -37,6 +44,14 @@ public abstract class Message implements Serializable {
 
     public MessageTopic getTopic() {
         return topic;
+    }
+
+    /**
+     * Gets the vector clock associated with this message.
+     * @return a defensive copy of the vector clock, or null if not set
+     */
+    public VectorClock getVectorClock() {
+        return vectorClock != null ? vectorClock.clone() : null;
     }
 
     @Override

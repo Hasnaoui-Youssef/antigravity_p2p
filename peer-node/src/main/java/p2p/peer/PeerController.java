@@ -124,10 +124,6 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         // Check username uniqueness
         List<User> existingUsers = bootstrapService.searchByUsername(localUser.getUsername());
         if (!existingUsers.isEmpty()) {
-            // Check if it's not us (e.g. stale registration) - strictly speaking we should
-            // fail if ANYONE has this name
-            // But for robustness, if the IP/Port matches, maybe it's a restart.
-            // However, the requirement is strict uniqueness.
             boolean collision = existingUsers.stream()
                     .anyMatch(u -> !u.getUserId().equals(localUser.getUserId()));
 
@@ -231,13 +227,34 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         return groupManager.createGroup(name, friends);
     }
 
+    /**
+     * Accept a group invitation.
+     */
+    public void acceptGroupInvitation(String groupId) throws Exception {
+        groupManager.acceptGroupInvitation(groupId);
+    }
+
+    /**
+     * Reject a group invitation.
+     */
+    public void rejectGroupInvitation(String groupId) throws Exception {
+        groupManager.rejectGroupInvitation(groupId);
+    }
+
+    /**
+     * Get all pending group invitations.
+     */
+    public List<GroupInvitationMessage> getPendingGroupInvitations() {
+        return groupManager.getPendingInvitations();
+    }
+
     public void sendGroupMessage(String groupId, String content) throws Exception {
         Group group = groupManager.getGroup(groupId);
         if (group == null) {
             throw new IllegalArgumentException("Not a member of group: " + groupId);
         }
 
-        GroupMessage message = GroupMessage.create(localUser, groupId, content, vectorClock);
+        ChatMessage message = ChatMessage.createGroup(localUser, groupId, content, vectorClock);
         vectorClock.increment(localUser.getUserId());
 
         // Store message locally first
@@ -284,38 +301,18 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         return groupManager.getGroup(groupId);
     }
 
-    public void setInvitationHandler(p2p.peer.groups.InvitationHandler handler) {
-        groupManager.setInvitationHandler(handler);
-    }
-
     // ========== PeerService RMI Implementation ==========
-
-    // Removed receiveFriendRequest and acceptFriendRequest as they are now messages
 
     @Override
     public void receiveMessage(Message message) throws RemoteException {
-        System.out.println("[DEBUG] " + localUser.getUsername() + " received message: " + message.getTopic() + " from "
-                + message.getSenderId());
         switch (message.getTopic()) {
-            case DIRECT -> handleDirectMessage((DirectMessage) message);
-            case GROUP -> handleGroupMessage((GroupMessage) message);
+            case CHAT -> handleChatMessage((ChatMessage) message);
+            case GROUP_INVITATION -> handleGroupInvitation((GroupInvitationMessage) message);
             case GOSSIP -> handleGossipMessage((GossipMessage) message);
             case SYNC_REQUEST -> handleSyncRequest((SyncRequest) message);
             case FRIEND_MESSAGE -> handleFriendshipMessage((FriendMessage) message);
             case SYNC_RESPONSE -> handleSyncResponse((SyncResponse) message);
             case ELECTION -> handleElectionMessage((ElectionMessage) message);
-            case INVITATION_REQUEST -> handleInvitationRequest((GroupInvitationRequest) message);
-            case INVITATION_RESPONSE -> handleInvitationResponse((GroupInvitationResponse) message);
-            case GROUP_REJECT -> {
-                if (message instanceof GroupRejectMessage reject) {
-                    groupManager.handleGroupReject(reject);
-                }
-            }
-        }
-
-        // Notify listeners of message receipt
-        for (PeerEventListener listener : listeners) {
-            listener.onMessageReceived(message);
         }
     }
 
@@ -338,30 +335,45 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
 
     // ========== Message Handling Helpers ==========
 
+    private void handleChatMessage(ChatMessage message) {
+        synchronized (vectorClock) {
+            VectorClock msgClock = message.getVectorClock();
+            if (msgClock != null) {
+                vectorClock.update(msgClock);
+            }
+        }
+        
+        if (message.getSubtopic() == ChatSubtopic.DIRECT) {
+            // Handle direct message
+            messageHandler.handleIncomingChatMessage(message);
+        } else {
+            // GROUP message
+            groupManager.addMessage(message.getGroupId(), message);
+            
+            Group group = groupManager.getGroup(message.getGroupId());
+            if (group != null && message.getSenderId().equals(group.getLeaderId())) {
+                electionManager.recordLeaderActivity(message.getGroupId());
+            }
+        }
+        
+        // Notify all listeners for both DIRECT and GROUP messages
+        for (PeerEventListener listener : listeners) {
+            listener.onMessageReceived(message);
+        }
+    }
+
+    private void handleGroupInvitation(GroupInvitationMessage message) {
+        switch (message.getSubtopic()) {
+            case REQUEST -> groupManager.handleInvitationRequest(message);
+            case ACCEPT, REJECT -> groupManager.handleInvitationResponse(message);
+        }
+    }
+
     private void handleFriendshipMessage(FriendMessage message) {
         switch (message.getFriendMessageType()) {
             case FRIEND_REQUEST -> friendManager.handleFriendRequest(message.getSender());
             case FRIEND_ACCEPT -> friendManager.handleFriendAcceptance(message.getSender());
             case FRIEND_REJECT -> friendManager.handleFriendRejection(message.getSender());
-        }
-    }
-
-    private void handleDirectMessage(DirectMessage message) {
-        synchronized (vectorClock) {
-            vectorClock.update(message.getVectorClock());
-        }
-        messageHandler.handleIncomingMessage(message);
-    }
-
-    private void handleGroupMessage(GroupMessage message) {
-        synchronized (vectorClock) {
-            vectorClock.update(message.getVectorClock());
-        }
-        groupManager.addMessage(message.getGroupId(), message);
-
-        Group group = groupManager.getGroup(message.getGroupId());
-        if (group != null && message.getSenderId().equals(group.getLeaderId())) {
-            electionManager.recordLeaderActivity(message.getGroupId());
         }
     }
 
@@ -391,18 +403,6 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             case VOTE -> electionManager.handleElectionVote(message);
             case RESULT -> electionManager.handleElectionResult(message);
         }
-    }
-
-    private void handleInvitationRequest(GroupInvitationRequest message) {
-        System.out.println(
-                "[DEBUG] " + localUser.getUsername() + " handling invitation request from " + message.getSenderId());
-        groupManager.handleInvitationRequest(message);
-    }
-
-    private void handleInvitationResponse(GroupInvitationResponse message) {
-        System.out.println("[DEBUG] " + localUser.getUsername() + " handling invitation response from "
-                + message.getSenderId() + " status=" + message.getStatus());
-        groupManager.handleInvitationResponse(message);
     }
 
     // ========== Wait Methods (Robust Synchronization) ==========
@@ -559,15 +559,17 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
 
         @Override
         public void onMessageReceived(Message message) {
-            if (message.getTopic() == MessageTopic.GROUP) {
-                synchronized (messageWaitLock) {
-                    messageWaitLock.notifyAll();
+            if (message.getTopic() == MessageTopic.CHAT && message instanceof ChatMessage chatMsg) {
+                if (chatMsg.getSubtopic() == ChatSubtopic.GROUP) {
+                    synchronized (messageWaitLock) {
+                        messageWaitLock.notifyAll();
+                    }
                 }
             }
         }
 
         @Override
-        public void onGroupInvitation(GroupInvitationRequest request) {
+        public void onGroupInvitation(GroupInvitationMessage request) {
         }
 
         @Override

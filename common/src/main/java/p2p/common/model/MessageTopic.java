@@ -1,14 +1,11 @@
 package p2p.common.model;
 
 public enum MessageTopic {
-    DIRECT,
-    GROUP,
+    CHAT,              // Unified chat messages (direct and group)
     GOSSIP,
     SYNC_REQUEST,
     SYNC_RESPONSE,
     ELECTION,
-    INVITATION_REQUEST,
-    INVITATION_RESPONSE,
-    GROUP_REJECT,
+    GROUP_INVITATION,  // Unified group invitation messages (request, accept, reject)
     FRIEND_MESSAGE
 }

@@ -1,7 +1,7 @@
 package p2p.peer;
 
 import p2p.common.model.User;
-import p2p.common.model.message.GroupInvitationRequest;
+import p2p.common.model.message.GroupInvitationMessage;
 import p2p.common.model.message.Message;
 
 /**
@@ -28,7 +28,7 @@ public interface PeerEventListener {
     /**
      * Called when a group invitation is received.
      */
-    void onGroupInvitation(GroupInvitationRequest request);
+    void onGroupInvitation(GroupInvitationMessage request);
 
     /**
      * Called when a generic group event occurs (created, dissolved, member

@@ -277,13 +277,7 @@ public class ConsensusManager {
      * Determine if a message should be sent based on sender's vector clock.
      */
     private boolean shouldSendMessage(Message msg, VectorClock senderClock) {
-        VectorClock msgClock = null;
-        
-        if (msg instanceof DirectMessage) {
-            msgClock = ((DirectMessage) msg).getVectorClock();
-        } else if (msg instanceof GroupMessage) {
-            msgClock = ((GroupMessage) msg).getVectorClock();
-        }
+        VectorClock msgClock = msg.getVectorClock();
         
         // If the message has a vector clock, check if the sender has seen it
         if (msgClock != null) {
