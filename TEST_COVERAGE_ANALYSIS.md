@@ -6,11 +6,11 @@
 
 | Old Test | Covered in PeerIntegrationTest? | New Test |
 |----------|--------------------------------|----------|
-| ✓ Alice sends friend request to Bob | ✅ YES | `testFriendRequestFlow()` |
-| ✓ Bob accepts Alice's friend request | ✅ YES | `testFriendRequestFlow()` |
-| ✓ Vector clocks synchronize during friend request flow | ✅ YES | `testVectorClockSync()` |
-| ✓ Duplicate friend request is ignored | ✅ YES | `testDuplicateFriendRequests()` |
-| ✓ Cannot send friend request if already friends | ✅ YES | Tested in `testDuplicateFriendRequests()` |
+|  Alice sends friend request to Bob | ✅ YES | `testFriendRequestFlow()` |
+|  Bob accepts Alice's friend request | ✅ YES | `testFriendRequestFlow()` |
+|  Vector clocks synchronize during friend request flow | ✅ YES | `testVectorClockSync()` |
+|  Duplicate friend request is ignored | ✅ YES | `testDuplicateFriendRequests()` |
+|  Cannot send friend request if already friends | ✅ YES | Tested in `testDuplicateFriendRequests()` |
 
 **Status: 100% coverage** ✅
 
@@ -20,12 +20,12 @@
 
 | Old Test | Covered in PeerIntegrationTest? | New Test |
 |----------|--------------------------------|----------|
-| ✓ Alice sends message to Bob | ✅ YES | `testMessaging()` |
-| ✓ Bidirectional messaging | ✅ YES | `testMessaging()` |
-| ✓ Vector clocks update on message exchange | ✅ YES | `testVectorClockSync()` + `testMessaging()` |
-| ✓ Message vector clocks show causality | ⚠️ PARTIAL | Vector clock validation exists but not explicit causality chain |
-| ✓ Cannot send message to non-friend | ❌ NO | Not covered |
-| ✓ Multiple messages preserve order | ❌ NO | Not covered |
+|  Alice sends message to Bob | ✅ YES | `testMessaging()` |
+|  Bidirectional messaging | ✅ YES | `testMessaging()` |
+|  Vector clocks update on message exchange | ✅ YES | `testVectorClockSync()` + `testMessaging()` |
+|  Message vector clocks show causality | ⚠️ PARTIAL | Vector clock validation exists but not explicit causality chain |
+|  Cannot send message to non-friend | ❌ NO | Not covered |
+|  Multiple messages preserve order | ❌ NO | Not covered |
 
 **Status: 67% coverage** ⚠️
 

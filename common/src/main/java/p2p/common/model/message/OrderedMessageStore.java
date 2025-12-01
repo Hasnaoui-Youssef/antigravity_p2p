@@ -10,21 +10,22 @@ import java.util.concurrent.ConcurrentSkipListSet;
  * with deterministic ordering for concurrent events.
  * 
  * Ordering rules:
- * 1. If m1.clock.happensBefore(m2.clock) → m1 comes before m2
- * 2. If m2.clock.happensBefore(m1.clock) → m2 comes before m1
- * 3. If concurrent (neither happens-before): compare sender IDs lexicographically
+ * 1. If m1.clock.happensBefore(m2.clock) -> m1 comes before m2
+ * 2. If m2.clock.happensBefore(m1.clock) -> m2 comes before m1
+ * 3. If concurrent (neither happens-before): compare sender IDs
+ * lexicographically
  * 4. If same sender: compare message IDs lexicographically
  */
 public class OrderedMessageStore {
-    
+
     private final Set<Message> messages;
     private final CausalOrderComparator comparator;
-    
+
     public OrderedMessageStore() {
         this.comparator = new CausalOrderComparator();
         this.messages = new ConcurrentSkipListSet<>(comparator);
     }
-    
+
     /**
      * Adds a message to the store.
      * Duplicate messages (same message ID) are ignored.
@@ -36,7 +37,7 @@ public class OrderedMessageStore {
             messages.add(message);
         }
     }
-    
+
     /**
      * Gets all messages in causal order.
      * 
@@ -45,7 +46,7 @@ public class OrderedMessageStore {
     public List<Message> getOrderedMessages() {
         return new ArrayList<>(messages);
     }
-    
+
     /**
      * Gets messages that happened after the given clock.
      * 
@@ -58,20 +59,20 @@ public class OrderedMessageStore {
         if (since == null) {
             return getOrderedMessages();
         }
-        
+
         Map<String, Integer> sinceSnapshot = since.getClockSnapshot();
         if (sinceSnapshot.isEmpty()) {
             return getOrderedMessages();
         }
-        
+
         List<Message> result = new ArrayList<>();
-        
+
         for (Message message : messages) {
             VectorClock msgClock = message.getVectorClock();
             if (msgClock == null) {
                 continue;
             }
-            
+
             // A message happened "after" the since clock if:
             // since.happensBefore(msgClock) is true
             // This means the message clock is causally after the since clock
@@ -79,10 +80,10 @@ public class OrderedMessageStore {
                 result.add(message);
             }
         }
-        
+
         return result;
     }
-    
+
     /**
      * Gets the number of messages in the store.
      * 
@@ -91,7 +92,7 @@ public class OrderedMessageStore {
     public int size() {
         return messages.size();
     }
-    
+
     /**
      * Checks if the store is empty.
      * 
@@ -100,7 +101,7 @@ public class OrderedMessageStore {
     public boolean isEmpty() {
         return messages.isEmpty();
     }
-    
+
     /**
      * Clears all messages from the store.
      */

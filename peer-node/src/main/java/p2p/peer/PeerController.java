@@ -1,6 +1,7 @@
 package p2p.peer;
 
 import p2p.common.model.Group;
+import p2p.common.model.GroupEvent;
 import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
 import p2p.common.model.message.*;
@@ -77,10 +78,10 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         this.groupManager = new GroupManager(localUser, vectorClock, friendManager);
         this.messageHandler = new MessageHandler(localUser, vectorClock, friendManager);
         this.gossipManager = new GossipManager(localUser, groupManager);
-        this.consensusManager = new ConsensusManager(localUser, groupManager);
+        this.consensusManager = new ConsensusManager(localUser, groupManager, vectorClock);
         this.gossipManager.setConsensusManager(consensusManager);
 
-        this.electionManager = new LeaderElectionManager(localUser, groupManager);
+        this.electionManager = new LeaderElectionManager(localUser, groupManager, vectorClock);
         this.electionManager.setGossipManager(gossipManager);
         this.groupManager.setElectionManager(electionManager);
 
@@ -342,20 +343,19 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
                 vectorClock.update(msgClock);
             }
         }
-        
-        if (message.getSubtopic() == ChatSubtopic.DIRECT) {
+        if (message.getSubtopic() == ChatMessage.ChatSubtopic.DIRECT) {
             // Handle direct message
             messageHandler.handleIncomingChatMessage(message);
         } else {
             // GROUP message
             groupManager.addMessage(message.getGroupId(), message);
-            
+
             Group group = groupManager.getGroup(message.getGroupId());
             if (group != null && message.getSenderId().equals(group.getLeaderId())) {
                 electionManager.recordLeaderActivity(message.getGroupId());
             }
         }
-        
+
         // Notify all listeners for both DIRECT and GROUP messages
         for (PeerEventListener listener : listeners) {
             listener.onMessageReceived(message);
@@ -367,6 +367,11 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             case REQUEST -> groupManager.handleInvitationRequest(message);
             case ACCEPT, REJECT -> groupManager.handleInvitationResponse(message);
         }
+        synchronized (vectorClock) {
+            if (message.getVectorClock() != null) {
+                vectorClock.update(message.getVectorClock());
+            }
+        }
     }
 
     private void handleFriendshipMessage(FriendMessage message) {
@@ -375,26 +380,57 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             case FRIEND_ACCEPT -> friendManager.handleFriendAcceptance(message.getSender());
             case FRIEND_REJECT -> friendManager.handleFriendRejection(message.getSender());
         }
+        synchronized (vectorClock) {
+            if (message.getVectorClock() != null) {
+                vectorClock.update(message.getVectorClock());
+            }
+        }
     }
 
     private void handleGossipMessage(GossipMessage message) {
         gossipManager.handleGossipMessage(message);
+        synchronized (vectorClock) {
+            if (message.getVectorClock() != null) {
+                vectorClock.update(message.getVectorClock());
+            }
+        }
     }
 
     private void handleSyncRequest(SyncRequest message) {
-        User requester = friendManager.getFriends().stream()
+        // Sync requests only happen within groups, so look up requester in group
+        // members
+        Group group = groupManager.getGroup(message.getGroupId());
+        if (group == null) {
+            notifyLog("Received sync request for unknown group: " + message.getGroupId());
+            return;
+        }
+
+        User requester = group.getMembers().stream()
                 .filter(u -> u.getUserId().equals(message.getSenderId()))
                 .findFirst()
                 .orElse(null);
 
         if (requester != null) {
-            consensusManager.handleSyncRequest(message.getGroupId(), message.getLastKnownState(), requester,
-                    message.getMessageId());
+            consensusManager.handleSyncRequest(message.getGroupId(), message.getVectorClock(),
+                    requester, message.getMessageId());
+        } else {
+            notifyLog("Received sync request from non-member: " + message.getSenderId());
+        }
+
+        synchronized (vectorClock) {
+            if (message.getVectorClock() != null) {
+                vectorClock.update(message.getVectorClock());
+            }
         }
     }
 
     private void handleSyncResponse(SyncResponse message) {
         consensusManager.handleSyncResponse(message);
+        synchronized (vectorClock) {
+            if (message.getVectorClock() != null) {
+                vectorClock.update(message.getVectorClock());
+            }
+        }
     }
 
     private void handleElectionMessage(ElectionMessage message) {
@@ -560,7 +596,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         @Override
         public void onMessageReceived(Message message) {
             if (message.getTopic() == MessageTopic.CHAT && message instanceof ChatMessage chatMsg) {
-                if (chatMsg.getSubtopic() == ChatSubtopic.GROUP) {
+                if (chatMsg.getSubtopic() == ChatMessage.ChatSubtopic.GROUP) {
                     synchronized (messageWaitLock) {
                         messageWaitLock.notifyAll();
                     }
@@ -573,7 +609,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         }
 
         @Override
-        public void onGroupEvent(String groupId, String eventType, String message) {
+        public void onGroupEvent(String groupId, GroupEvent eventType, String message) {
             synchronized (groupWaitLock) {
                 groupWaitLock.notifyAll();
             }
@@ -588,6 +624,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
 
         @Override
         public void onError(String message, Throwable t) {
+            System.err.println("Error: " + message);
         }
 
         @Override

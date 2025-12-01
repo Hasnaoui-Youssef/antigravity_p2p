@@ -1,6 +1,7 @@
 package p2p.common.model.message;
 
 import p2p.common.model.MessageTopic;
+import p2p.common.vectorclock.VectorClock;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -24,8 +25,8 @@ public final class ElectionMessage extends Message {
     private final long epoch;
 
     public ElectionMessage(String messageId, String senderId, long timestamp,
-            String groupId, ElectionType electionType, String candidateId, long epoch) {
-        super(messageId, senderId, timestamp, MessageTopic.ELECTION);
+            String groupId, ElectionType electionType, String candidateId, long epoch, VectorClock vectorClock) {
+        super(messageId, senderId, timestamp, MessageTopic.ELECTION, vectorClock);
         this.groupId = Objects.requireNonNull(groupId);
         this.electionType = Objects.requireNonNull(electionType);
         this.candidateId = Objects.requireNonNull(candidateId);
@@ -33,7 +34,7 @@ public final class ElectionMessage extends Message {
     }
 
     public static ElectionMessage create(String senderId, String groupId, ElectionType type, String candidateId,
-            long epoch) {
+            long epoch, VectorClock vectorClock) {
         return new ElectionMessage(
                 UUID.randomUUID().toString(),
                 senderId,
@@ -41,7 +42,8 @@ public final class ElectionMessage extends Message {
                 groupId,
                 type,
                 candidateId,
-                epoch);
+                epoch,
+                vectorClock);
     }
 
     public String getGroupId() {

@@ -122,7 +122,7 @@ public class TerminalUI {
             System.out.println("  (none)");
         } else {
             for (User friend : friends) {
-                System.out.println("  ✓ " + friend.getUsername());
+                System.out.println("   " + friend.getUsername());
             }
         }
 

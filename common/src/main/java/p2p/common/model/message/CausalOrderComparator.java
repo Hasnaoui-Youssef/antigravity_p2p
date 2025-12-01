@@ -9,10 +9,12 @@ import java.util.Comparator;
  * ordering for concurrent events.
  * 
  * Ordering rules:
- * 1. If m1.clock.happensBefore(m2.clock) → m1 comes before m2
- * 2. If m2.clock.happensBefore(m1.clock) → m2 comes before m1
- * 3. If concurrent (neither happens-before): compare sender IDs lexicographically
- * 4. If same sender with concurrent clocks: throw IllegalStateException (this is a bug)
+ * 1. If m1.clock.happensBefore(m2.clock) -> m1 comes before m2
+ * 2. If m2.clock.happensBefore(m1.clock) -> m2 comes before m1
+ * 3. If concurrent (neither happens-before): compare sender IDs
+ * lexicographically
+ * 4. If same sender with concurrent clocks: throw IllegalStateException (this
+ * is a bug)
  */
 public class CausalOrderComparator implements Comparator<Message> {
 
@@ -21,51 +23,31 @@ public class CausalOrderComparator implements Comparator<Message> {
         if (m1 == m2) {
             return 0;
         }
-        
+
         VectorClock clock1 = m1.getVectorClock();
         VectorClock clock2 = m2.getVectorClock();
-        
-        // Check if both messages have meaningful (non-empty) clocks
-        boolean hasMeaningfulClocks = hasEntries(clock1) && hasEntries(clock2);
-        
-        if (hasMeaningfulClocks) {
-            // Check for happens-before relationship
-            if (clock1.happensBefore(clock2)) {
-                return -1;  // m1 comes before m2
-            }
-            if (clock2.happensBefore(clock1)) {
-                return 1;   // m2 comes before m1
-            }
-            
-            // They are concurrent - use tiebreakers
+
+        if (clock1 == null || clock2 == null) {
+            throw new IllegalArgumentException("Clocks cannot be null");
         }
-        
+
+        if (clock1.happensBefore(clock2)) {
+            return -1;
+        }
+        if (clock2.happensBefore(clock1)) {
+            return 1;
+        }
+
         // Concurrent events or no clocks: use sender ID as primary tiebreaker
         int senderCompare = m1.getSenderId().compareTo(m2.getSenderId());
         if (senderCompare != 0) {
             return senderCompare;
         }
-        
+
         // Same sender with concurrent messages indicates a failure - messages from
         // the same sender should always have a happens-before relationship
-        if (hasMeaningfulClocks) {
-            throw new IllegalStateException(
+        throw new IllegalStateException(
                 "Messages from the same sender should never be concurrent. " +
-                "Sender: " + m1.getSenderId() + ", Messages: " + m1.getMessageId() + ", " + m2.getMessageId());
-        }
-        
-        // Only use message ID as tiebreaker when clocks are null/empty (fallback for legacy messages)
-        return m1.getMessageId().compareTo(m2.getMessageId());
-    }
-    
-    /**
-     * Check if a VectorClock has any entries (is not null or empty).
-     */
-    private boolean hasEntries(VectorClock clock) {
-        if (clock == null) {
-            return false;
-        }
-        // Check if the clock has at least one entry
-        return !clock.getClockSnapshot().isEmpty();
+                        "Sender: " + m1.getSenderId() + ", Messages: " + m1.getMessageId() + ", " + m2.getMessageId());
     }
 }

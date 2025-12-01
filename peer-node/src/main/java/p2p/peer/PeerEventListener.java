@@ -1,5 +1,6 @@
 package p2p.peer;
 
+import p2p.common.model.GroupEvent;
 import p2p.common.model.User;
 import p2p.common.model.message.GroupInvitationMessage;
 import p2p.common.model.message.Message;
@@ -34,7 +35,7 @@ public interface PeerEventListener {
      * Called when a generic group event occurs (created, dissolved, member
      * joined/left).
      */
-    void onGroupEvent(String groupId, String eventType, String message);
+    void onGroupEvent(String groupId, GroupEvent eventType, String message);
 
     /**
      * Called when a new leader is elected for a group.

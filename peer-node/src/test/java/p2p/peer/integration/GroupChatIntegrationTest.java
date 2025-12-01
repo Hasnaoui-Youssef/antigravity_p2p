@@ -1,9 +1,17 @@
 package p2p.peer.integration;
 
+import p2p.peer.util.MultiPeerGroupEventWaiter;
+import p2p.peer.util.TestEvent;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
 import org.junit.jupiter.api.*;
 import p2p.bootstrap.BootstrapServiceImpl;
 import p2p.bootstrap.UserRegistry;
 import p2p.common.model.Group;
+import p2p.common.model.GroupEvent;
+import p2p.common.model.message.ChatMessage;
 import p2p.common.model.message.GroupInvitationMessage;
 import p2p.common.model.message.Message;
 import p2p.peer.PeerEventListener;
@@ -128,7 +136,8 @@ class GroupChatIntegrationTest {
     }
 
     /**
-     * Add an auto-accept listener to a peer that accepts all group invitations automatically.
+     * Add an auto-accept listener to a peer that accepts all group invitations
+     * automatically.
      */
     private void autoAcceptInvitations(PeerController peer) {
         peer.addEventListener(new PeerEventListener() {
@@ -141,18 +150,39 @@ class GroupChatIntegrationTest {
                 }
             }
 
-            @Override public void onFriendRequest(User requester) {}
-            @Override public void onFriendRequestAccepted(User accepter) {}
-            @Override public void onMessageReceived(Message message) {}
-            @Override public void onGroupEvent(String groupId, String eventType, String message) {}
-            @Override public void onLeaderElected(String groupId, String leaderId, long epoch) {}
-            @Override public void onError(String message, Throwable t) {}
-            @Override public void onLog(String message) {}
+            @Override
+            public void onFriendRequest(User requester) {
+            }
+
+            @Override
+            public void onFriendRequestAccepted(User accepter) {
+            }
+
+            @Override
+            public void onMessageReceived(Message message) {
+            }
+
+            @Override
+            public void onGroupEvent(String groupId, GroupEvent eventType, String message) {
+            }
+
+            @Override
+            public void onLeaderElected(String groupId, String leaderId, long epoch) {
+            }
+
+            @Override
+            public void onError(String message, Throwable t) {
+            }
+
+            @Override
+            public void onLog(String message) {
+            }
         });
     }
 
     /**
-     * Add a reject listener to a peer that rejects all group invitations automatically.
+     * Add a reject listener to a peer that rejects all group invitations
+     * automatically.
      */
     private void autoRejectInvitations(PeerController peer) {
         peer.addEventListener(new PeerEventListener() {
@@ -165,16 +195,35 @@ class GroupChatIntegrationTest {
                 }
             }
 
-            @Override public void onFriendRequest(User requester) {}
-            @Override public void onFriendRequestAccepted(User accepter) {}
-            @Override public void onMessageReceived(Message message) {}
-            @Override public void onGroupEvent(String groupId, String eventType, String message) {}
-            @Override public void onLeaderElected(String groupId, String leaderId, long epoch) {}
-            @Override public void onError(String message, Throwable t) {}
-            @Override public void onLog(String message) {}
+            @Override
+            public void onFriendRequest(User requester) {
+            }
+
+            @Override
+            public void onFriendRequestAccepted(User accepter) {
+            }
+
+            @Override
+            public void onMessageReceived(Message message) {
+            }
+
+            @Override
+            public void onGroupEvent(String groupId, GroupEvent eventType, String message) {
+            }
+
+            @Override
+            public void onLeaderElected(String groupId, String leaderId, long epoch) {
+            }
+
+            @Override
+            public void onError(String message, Throwable t) {
+            }
+
+            @Override
+            public void onLog(String message) {
+            }
         });
     }
-
 
     // ==========================================================================
     // TEST 1: Successful group creation with invitations accepted
@@ -231,7 +280,7 @@ class GroupChatIntegrationTest {
         assertTrue(charlie.getGroupManager().getMessages(groupId).size() > 0);
 
         System.out.println(
-                "[TEST] ✓ Test 1 passed: Group created successfully with invitations and all members can message");
+                "[TEST]  Test 1 passed: Group created successfully with invitations and all members can message");
     }
 
     // ==========================================================================
@@ -267,7 +316,7 @@ class GroupChatIntegrationTest {
         assertEquals(0, bob.getGroups().size(), "Bob should not have group either");
         assertEquals(0, charlie.getGroups().size(), "Charlie rejected, should not have group");
 
-        System.out.println("[TEST] ✓ Test 2 passed: Group correctly dissolved when member rejects");
+        System.out.println("[TEST]  Test 2 passed: Group correctly dissolved when member rejects");
     }
 
     // ==========================================================================
@@ -301,7 +350,7 @@ class GroupChatIntegrationTest {
         assertEquals(0, bob.getGroups().size(), "Bob should not have group");
         assertEquals(0, charlie.getGroups().size(), "Charlie should not have group");
 
-        System.out.println("[TEST] ✓ Test 3: Default rejection works when no handler set");
+        System.out.println("[TEST]  Test 3: Default rejection works when no handler set");
     }
 
     // ==========================================================================
@@ -324,7 +373,7 @@ class GroupChatIntegrationTest {
             assertTrue(e.getMessage().contains("at least 2"), "Error should mention minimum requirement");
         }
 
-        System.out.println("[TEST] ✓ Test 4: Minimum group size validation works");
+        System.out.println("[TEST]  Test 4: Minimum group size validation works");
     }
 
     // ==========================================================================
@@ -375,7 +424,7 @@ class GroupChatIntegrationTest {
         assertNull(charlie.getGroup(groupId),
                 "Charlie's group should be dissolved (only 2 members left)");
 
-        System.out.println("[TEST] ✓ Test 5: Group auto-dissolution when below minimum size");
+        System.out.println("[TEST]  Test 5: Group auto-dissolution when below minimum size");
     }
 
     // ==========================================================================
@@ -445,46 +494,44 @@ class GroupChatIntegrationTest {
         alice.stop();
         peers.remove(alice);
 
-        // Use polling to wait for new leader election
-        assertTrue(bob.waitForNewLeader(groupId, oldLeaderId, 15000),
-                "Bob should see new leader elected");
+        // Use MultiPeerGroupEventWaiter to wait for LEADER_ELECTED event
+        // We expect 5 peers (Bob, Charlie, David, Eve, Frank) to see the new leader
+        List<PeerController> remainingPeers = List.of(bob, charlie, david, eve, frank);
+        MultiPeerGroupEventWaiter waiter = new MultiPeerGroupEventWaiter(
+                groupId, TestEvent.LEADER_ELECTED, remainingPeers);
 
-        // Remaining 5 members should have elected a new leader
-        Group bobGroup = bob.getGroup(groupId);
-        Group charlieGroup = charlie.getGroup(groupId);
-        Group davidGroup = david.getGroup(groupId);
-        Group eveGroup = eve.getGroup(groupId);
-        Group frankGroup = frank.getGroup(groupId);
+        try {
+            // Wait up to 30 seconds for election to complete (gossip can be slow)
+            boolean success = waiter.await(30, TimeUnit.SECONDS);
 
-        // All should still have the group (not dissolved - 5 members remain)
-        assertNotNull(bobGroup, "Bob should still have group");
-        assertNotNull(charlieGroup, "Charlie should still have group");
-        assertNotNull(davidGroup, "David should still have group");
-        assertNotNull(eveGroup, "Eve should still have group");
-        assertNotNull(frankGroup, "Frank should still have group");
+            if (!success) {
+                List<String> pending = waiter.getPendingPeers();
+                fail("Timeout waiting for leader election. Pending peers: " + pending);
+            }
 
-        // New leader should NOT be Alice
-        assertNotEquals(oldLeaderId, bobGroup.getLeaderId(),
-                "Bob's group should have new leader");
-        assertNotEquals(oldLeaderId, charlieGroup.getLeaderId(),
-                "Charlie's group should have new leader");
+            // Verify all agreed on the SAME leader
+            String newLeaderId = bob.getGroup(groupId).getLeaderId();
+            assertNotEquals(oldLeaderId, newLeaderId, "Should have new leader");
 
-        // All should agree on the same new leader
-        String newLeader = bobGroup.getLeaderId();
-        assertEquals(newLeader, charlieGroup.getLeaderId(),
-                "Bob and Charlie should agree on new leader");
-        assertEquals(newLeader, davidGroup.getLeaderId(),
-                "David should agree on new leader");
-        assertEquals(newLeader, eveGroup.getLeaderId(),
-                "Eve should agree on new leader");
-        assertEquals(newLeader, frankGroup.getLeaderId(),
-                "Frank should agree on new leader");
+            for (PeerController peer : remainingPeers) {
+                Group g = peer.getGroup(groupId);
+                assertNotNull(g, peer.getLocalUser().getUsername() + " should still have the group");
+                assertEquals(newLeaderId, g.getLeaderId(),
+                        peer.getLocalUser().getUsername() + " should agree on new leader");
+            }
+
+            System.out.println("[TEST]  Test 6: Leader election completed successfully with 5 remaining members");
+            System.out.println("[TEST] New leader: "
+                    + remainingPeers.stream().filter(p -> p.getLocalUser().getUserId().equals(newLeaderId)).findFirst()
+                            .get().getLocalUser().getUsername());
+
+        } finally {
+            waiter.cleanup();
+        }
 
         // Verify epoch was incremented
+        Group bobGroup = bob.getGroup(groupId);
         assertTrue(bobGroup.getEpoch() > 0, "Epoch should be incremented after election");
-
-        System.out.println("[TEST] ✓ Test 6: Leader election completed successfully with 5 remaining members");
-        System.out.println("[TEST] New leader: " + newLeader);
     }
 
     // ==========================================================================
@@ -518,7 +565,6 @@ class GroupChatIntegrationTest {
             try {
                 for (int i = 0; i < 5; i++) {
                     alice.sendGroupMessage(groupId, "Alice-" + i);
-                    Thread.sleep(50);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -529,7 +575,6 @@ class GroupChatIntegrationTest {
             try {
                 for (int i = 0; i < 5; i++) {
                     bob.sendGroupMessage(groupId, "Bob-" + i);
-                    Thread.sleep(50);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -540,7 +585,6 @@ class GroupChatIntegrationTest {
             try {
                 for (int i = 0; i < 5; i++) {
                     charlie.sendGroupMessage(groupId, "Charlie-" + i);
-                    Thread.sleep(50);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -554,18 +598,44 @@ class GroupChatIntegrationTest {
         t2.join();
         t3.join();
 
-        Thread.sleep(2000); // Wait for message propagation
+        Thread.sleep(1000); // Wait for message propagation
 
         // Each should have received messages from all
         int aliceCount = alice.getGroupManager().getMessages(groupId).size();
         int bobCount = bob.getGroupManager().getMessages(groupId).size();
         int charlieCount = charlie.getGroupManager().getMessages(groupId).size();
+        Function<String, String> groupMessagesContentForUser = (String name) -> {
+            String message;
+            switch (name) {
+                case "Alice":
+                    message = alice.getGroupManager().getMessages(groupId).stream().map(ChatMessage::getContent)
+                            .collect(Collectors.joining(", "));
+                    break;
+                case "Bob":
+                    message = bob.getGroupManager().getMessages(groupId).stream().map(ChatMessage::getContent)
+                            .collect(Collectors.joining(", "));
+                    break;
+                case "Charlie":
+                    message = charlie.getGroupManager().getMessages(groupId).stream().map(ChatMessage::getContent)
+                            .collect(Collectors.joining(", "));
+                    break;
+                default:
+                    message = "Unknown user";
+            }
+            return message;
+        };
 
-        assertTrue(aliceCount >= 15, "Alice should have ~15 messages (got " + aliceCount + ")");
-        assertTrue(bobCount >= 15, "Bob should have ~15 messages (got " + bobCount + ")");
-        assertTrue(charlieCount >= 15, "Charlie should have ~15 messages (got " + charlieCount + ")");
+        assertTrue(aliceCount >= 15,
+                "Alice should have ~15 messages (got " + aliceCount + ")\n"
+                        + groupMessagesContentForUser.apply("Alice"));
+        assertTrue(bobCount >= 15,
+                "Bob should have ~15 messages (got " + bobCount + ")\n"
+                        + groupMessagesContentForUser.apply("Bob"));
+        assertTrue(charlieCount >= 15,
+                "Charlie should have ~15 messages (got " + charlieCount + ")\n"
+                        + groupMessagesContentForUser.apply("Charlie"));
 
-        System.out.println("[TEST] ✓ Test 7: Concurrent messaging works");
+        System.out.println("[TEST]  Test 7: Concurrent messaging works");
     }
 
     // ==========================================================================
@@ -627,7 +697,7 @@ class GroupChatIntegrationTest {
                 "Bob should have synced messages via gossip");
 
         int bobMessages = bob.getGroupManager().getMessages(groupId).size();
-        System.out.println("[TEST] ✓ Test 8: Gossip propagation works - Bob has " + bobMessages + " messages");
+        System.out.println("[TEST]  Test 8: Gossip propagation works - Bob has " + bobMessages + " messages");
     }
 
     // ==========================================================================
@@ -692,8 +762,10 @@ class GroupChatIntegrationTest {
         alice.sendGroupMessage(groupId, "Message 3 - All 3 offline");
 
         // Use polling for Bob and Frank to receive messages
-        assertTrue(bob.waitForMessages(groupId, 3, 5000), "Bob should have all 3 messages");
-        assertTrue(frank.waitForMessages(groupId, 3, 5000), "Frank should have all 3 messages");
+        assertTrue(bob.waitForMessages(groupId, 3, 5000),
+                "Bob should have all 3 messages " + bob.getGroupManager().getMessages(groupId).size());
+        assertTrue(frank.waitForMessages(groupId, 3, 5000),
+                "Frank should have all 3 messages " + frank.getGroupManager().getMessages(groupId).size());
 
         // Restore all 3 peers one at a time with gaps
         charlie.restoreNetwork();
@@ -704,18 +776,18 @@ class GroupChatIntegrationTest {
 
         // Use polling with longer timeout for all 3 to sync messages
         // The gossip cycle runs every 1 second and might need several rounds
-        assertTrue(charlie.waitForMessages(groupId, 3, 20000),
-                "Charlie should have synced all messages");
-        assertTrue(david.waitForMessages(groupId, 3, 20000),
-                "David should have synced all messages");
-        assertTrue(eve.waitForMessages(groupId, 3, 20000),
-                "Eve should have synced all messages");
+        assertTrue(charlie.waitForMessages(groupId, 3, 5000),
+                "Charlie should have synced all messages " + charlie.getGroupManager().getMessages(groupId).size());
+        assertTrue(david.waitForMessages(groupId, 3, 5000),
+                "David should have synced all messages " + david.getGroupManager().getMessages(groupId).size());
+        assertTrue(eve.waitForMessages(groupId, 3, 5000),
+                "Eve should have synced all messages " + eve.getGroupManager().getMessages(groupId).size());
 
         int charlieMessages = charlie.getGroupManager().getMessages(groupId).size();
         int davidMessages = david.getGroupManager().getMessages(groupId).size();
         int eveMessages = eve.getGroupManager().getMessages(groupId).size();
 
-        System.out.println("[TEST] ✓ Test 9: Staggered sync works - Charlie: " + charlieMessages +
+        System.out.println("[TEST]  Test 9: Staggered sync works - Charlie: " + charlieMessages +
                 ", David: " + davidMessages + ", Eve: " + eveMessages);
     }
 
@@ -780,7 +852,7 @@ class GroupChatIntegrationTest {
         // David should have Group2
         assertEquals(1, david.getGroups().size(), "David should have 1 group");
 
-        System.out.println("[TEST] ✓ Test 11: Concurrent group creation works");
+        System.out.println("[TEST]  Test 11: Concurrent group creation works");
     }
 
     // ==========================================================================
@@ -836,6 +908,6 @@ class GroupChatIntegrationTest {
                     " should have at least 10 messages (got " + messageCount + ")");
         }
 
-        System.out.println("[TEST] ✓ Test 11: Large group messaging verified");
+        System.out.println("[TEST]  Test 11: Large group messaging verified");
     }
 }

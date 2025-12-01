@@ -17,25 +17,26 @@ public final class SyncResponse extends Message {
 
     private final String requestId;
     private final String groupId;
-    private final List<Message> missingMessages;
+    private final List<ChatMessage> missingMessages;
 
     public SyncResponse(String messageId, String senderId, long timestamp, String requestId, String groupId,
-            List<Message> missingMessages) {
-        super(messageId, senderId, timestamp, MessageTopic.SYNC_RESPONSE);
+            List<ChatMessage> missingMessages, VectorClock vectorClock) {
+        super(messageId, senderId, timestamp, MessageTopic.SYNC_RESPONSE, vectorClock);
         this.requestId = Objects.requireNonNull(requestId);
         this.groupId = Objects.requireNonNull(groupId);
         this.missingMessages = Collections.unmodifiableList(Objects.requireNonNull(missingMessages));
     }
 
     public static SyncResponse create(String senderId, String requestId, String groupId,
-            List<Message> missingMessages) {
+            List<ChatMessage> missingMessages, VectorClock vectorClock) {
         return new SyncResponse(
                 UUID.randomUUID().toString(),
                 senderId,
                 Instant.now().toEpochMilli(),
                 requestId,
                 groupId,
-                missingMessages);
+                missingMessages,
+                vectorClock);
     }
 
     public String getRequestId() {
@@ -46,7 +47,7 @@ public final class SyncResponse extends Message {
         return groupId;
     }
 
-    public List<Message> getMissingMessages() {
+    public List<ChatMessage> getMissingMessages() {
         return missingMessages;
     }
 

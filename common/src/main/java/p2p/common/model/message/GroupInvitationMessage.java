@@ -1,6 +1,5 @@
 package p2p.common.model.message;
 
-import p2p.common.model.Group;
 import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
 import p2p.common.vectorclock.VectorClock;
@@ -21,7 +20,7 @@ public final class GroupInvitationMessage extends Message {
     private final GroupInvitationSubtopic subtopic;
     private final String groupId;
     private final String groupName;
-    private final List<User> potentialMembers;  // Only populated for REQUEST
+    private final List<User> potentialMembers; // Only populated for REQUEST
 
     private GroupInvitationMessage(String messageId, String senderId, long timestamp,
             GroupInvitationSubtopic subtopic, String groupId, String groupName,
@@ -29,24 +28,24 @@ public final class GroupInvitationMessage extends Message {
         super(messageId, senderId, timestamp, MessageTopic.GROUP_INVITATION, vectorClock);
         this.subtopic = Objects.requireNonNull(subtopic);
         this.groupId = Objects.requireNonNull(groupId);
-        this.groupName = groupName;  // May be null for responses
-        
+        this.groupName = groupName; // May be null for responses
+
         // Validate that potentialMembers is only provided for REQUEST subtopic
         if (potentialMembers != null && subtopic != GroupInvitationSubtopic.REQUEST) {
             throw new IllegalStateException(
-                "potentialMembers should only be provided for REQUEST subtopic, not " + subtopic);
+                    "potentialMembers should only be provided for REQUEST subtopic, not " + subtopic);
         }
-        
-        this.potentialMembers = potentialMembers != null 
-            ? Collections.unmodifiableList(potentialMembers) 
-            : null;
+
+        this.potentialMembers = potentialMembers != null
+                ? Collections.unmodifiableList(potentialMembers)
+                : null;
     }
 
     /**
      * Factory method for creating an invitation request.
      */
-    public static GroupInvitationMessage createRequest(String senderId, String groupId, 
-            String groupName, List<User> potentialMembers) {
+    public static GroupInvitationMessage createRequest(String senderId, String groupId,
+            String groupName, List<User> potentialMembers, VectorClock vectorClock) {
         return new GroupInvitationMessage(
                 UUID.randomUUID().toString(),
                 senderId,
@@ -55,13 +54,13 @@ public final class GroupInvitationMessage extends Message {
                 groupId,
                 groupName,
                 potentialMembers,
-                null);
+                vectorClock);
     }
 
     /**
      * Factory method for creating an acceptance response.
      */
-    public static GroupInvitationMessage createAccept(String senderId, String groupId) {
+    public static GroupInvitationMessage createAccept(String senderId, String groupId, VectorClock vectorClock) {
         return new GroupInvitationMessage(
                 UUID.randomUUID().toString(),
                 senderId,
@@ -70,13 +69,13 @@ public final class GroupInvitationMessage extends Message {
                 groupId,
                 null,
                 null,
-                null);
+                vectorClock);
     }
 
     /**
      * Factory method for creating a rejection response.
      */
-    public static GroupInvitationMessage createReject(String senderId, String groupId) {
+    public static GroupInvitationMessage createReject(String senderId, String groupId, VectorClock vectorClock) {
         return new GroupInvitationMessage(
                 UUID.randomUUID().toString(),
                 senderId,
@@ -85,7 +84,7 @@ public final class GroupInvitationMessage extends Message {
                 groupId,
                 null,
                 null,
-                null);
+                vectorClock);
     }
 
     public GroupInvitationSubtopic getSubtopic() {
@@ -102,13 +101,14 @@ public final class GroupInvitationMessage extends Message {
 
     /**
      * Gets the potential members for invitation requests.
+     * 
      * @return list of potential members
      * @throws IllegalStateException if this is not a REQUEST message
      */
     public List<User> getPotentialMembers() {
         if (subtopic != GroupInvitationSubtopic.REQUEST) {
             throw new IllegalStateException(
-                "potentialMembers is only available for REQUEST subtopic, not " + subtopic);
+                    "potentialMembers is only available for REQUEST subtopic, not " + subtopic);
         }
         return potentialMembers;
     }
@@ -137,8 +137,9 @@ public final class GroupInvitationMessage extends Message {
     @Override
     public String toString() {
         return switch (subtopic) {
-            case REQUEST -> String.format("GroupInvitationMessage{id='%s', type=REQUEST, sender='%s', group='%s', members=%d}",
-                    messageId, senderId, groupName, potentialMembers != null ? potentialMembers.size() : 0);
+            case REQUEST ->
+                String.format("GroupInvitationMessage{id='%s', type=REQUEST, sender='%s', group='%s', members=%d}",
+                        messageId, senderId, groupName, potentialMembers != null ? potentialMembers.size() : 0);
             case ACCEPT -> String.format("GroupInvitationMessage{id='%s', type=ACCEPT, sender='%s', group='%s'}",
                     messageId, senderId, groupId);
             case REJECT -> String.format("GroupInvitationMessage{id='%s', type=REJECT, sender='%s', group='%s'}",

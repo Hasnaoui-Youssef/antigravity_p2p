@@ -1,0 +1,128 @@
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :common:compileJava UP-TO-DATE
+> Task :bootstrap-server:compileJava UP-TO-DATE
+> Task :bootstrap-server:processResources NO-SOURCE
+> Task :bootstrap-server:classes UP-TO-DATE
+> Task :common:processResources NO-SOURCE
+> Task :common:classes UP-TO-DATE
+> Task :common:jar UP-TO-DATE
+> Task :bootstrap-server:jar UP-TO-DATE
+> Task :peer-node:compileJava
+> Task :peer-node:processResources NO-SOURCE
+> Task :peer-node:classes
+> Task :peer-node:compileTestJava UP-TO-DATE
+> Task :peer-node:processTestResources NO-SOURCE
+> Task :peer-node:testClasses UP-TO-DATE
+
+> Task :peer-node:test
+
+GroupChatIntegrationTest STANDARD_OUT
+    [GroupChatTest] Bootstrap server started on port 14099
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_OUT
+    [RMI] Server started on port 16001
+    [Registry] User registered: Alice
+    [RMI] Server started on port 16002
+    [Registry] User registered: Bob
+    [RMI] Server started on port 16003
+    [Registry] User registered: Charlie
+    [RMI] Server started on port 16004
+    [Registry] User registered: David
+    [RMI] Server started on port 16005
+    [Registry] User registered: Eve
+    [RMI] Server started on port 16006
+    [Registry] User registered: Frank
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_ERROR
+    Error: Failed to send to Charlie
+    Error: Failed to send to David
+    Error: Failed to send to Eve
+    Error: Failed to send to Charlie
+    Error: Failed to send to David
+    Error: Failed to send to Eve
+    Error: Failed to send to Charlie
+    Error: Failed to send to David
+    Error: Failed to send to Eve
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_OUT
+    [RMI] Server started on port 16003
+    [RMI] Server started on port 16004
+    [Consensus] Sync complete for group 269e1fdb-5927-4c21-80a6-d4cc19e8e845 - received 3 messages
+    [Consensus] Sync complete for group 269e1fdb-5927-4c21-80a6-d4cc19e8e845 - received 3 messages
+    [RMI] Server started on port 16005
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_ERROR
+    [Consensus] Failed to send sync response: Cannot invoke "p2p.common.model.User.getIpAddress()" because "requester" is null
+    [Consensus] Failed to send sync response: Cannot invoke "p2p.common.model.User.getIpAddress()" because "requester" is null
+    [Consensus] Failed to send sync response: Cannot invoke "p2p.common.model.User.getIpAddress()" because "requester" is null
+    [Consensus] Failed to send sync response: Cannot invoke "p2p.common.model.User.getIpAddress()" because "requester" is null
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_OUT
+    [Consensus] Sync complete for group 269e1fdb-5927-4c21-80a6-d4cc19e8e845 - received 3 messages
+    [Gossip] Peer 0936dc00 suspects leader, we also suspect: false
+    [Gossip] Peer 9f614086 suspects leader, we also suspect: false
+    [Gossip] Peer 140ef7d4 suspects leader, we also suspect: true
+    [Gossip] Reports: 2, totalMembers: 6, shouldTrigger: false
+    [Gossip] Peer 9b7fe882 suspects leader, we also suspect: true
+    [Gossip] Reports: 1, totalMembers: 6, shouldTrigger: false
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_ERROR
+    [Consensus] Failed to send sync response: Cannot invoke "p2p.common.model.User.getIpAddress()" because "requester" is null
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_OUT
+    [Gossip] Peer e0e5be98 suspects leader, we also suspect: true
+    [Gossip] Reports: 2, totalMembers: 6, shouldTrigger: false
+    [Gossip] Peer 2c145123 suspects leader, we also suspect: true
+    [Gossip] Reports: 2, totalMembers: 6, shouldTrigger: false
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_ERROR
+    [Consensus] Failed to send sync response: Cannot invoke "p2p.common.model.User.getIpAddress()" because "requester" is null
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_OUT
+    [Gossip] Peer 0936dc00 suspects leader, we also suspect: true
+    [Gossip] Reports: 3, totalMembers: 6, shouldTrigger: true
+    [Gossip] Triggering leader failure callback for group 269e1fdb-5927-4c21-80a6-d4cc19e8e845
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_ERROR
+    [Consensus] Failed to send sync response: Cannot invoke "p2p.common.model.User.getIpAddress()" because "requester" is null
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects STANDARD_OUT
+    [Gossip] Peer 9f614086 suspects leader, we also suspect: true
+    [Gossip] Reports: 3, totalMembers: 6, shouldTrigger: true
+    [Gossip] Triggering leader failure callback for group 269e1fdb-5927-4c21-80a6-d4cc19e8e845
+    [Registry] User unregistered: Alice
+    [Registry] User unregistered: Bob
+    [Registry] User unregistered: Charlie
+    [Registry] User unregistered: David
+    [Registry] User unregistered: Eve
+    [Registry] User unregistered: Frank
+    [Consensus] Sync complete for group 269e1fdb-5927-4c21-80a6-d4cc19e8e845 - received 3 messages
+    [Consensus] Sync complete for group 269e1fdb-5927-4c21-80a6-d4cc19e8e845 - received 3 messages
+
+GroupChatIntegrationTest > 9. Multiple peers sync missing messages after staggered disconnects FAILED
+    org.opentest4j.AssertionFailedError: David should have synced all messages 0 ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//p2p.peer.integration.GroupChatIntegrationTest.testConsensusSync(GroupChatIntegrationTest.java:781)
+
+GroupChatIntegrationTest STANDARD_OUT
+    [GroupChatTest] Bootstrap server stopped
+
+1 test completed, 1 failed
+
+> Task :peer-node:test FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':peer-node:test'.
+> There were failing tests. See the report at: file:///home/youssef/projects/java_projects/antigravity_p2p/peer-node/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 22s
+7 actionable tasks: 2 executed, 5 up-to-date

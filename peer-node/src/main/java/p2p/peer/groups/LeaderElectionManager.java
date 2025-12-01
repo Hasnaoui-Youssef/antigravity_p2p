@@ -4,6 +4,7 @@ import p2p.common.model.Group;
 import p2p.common.model.User;
 import p2p.common.model.message.ElectionMessage;
 import p2p.common.rmi.PeerService;
+import p2p.common.vectorclock.VectorClock;
 import p2p.peer.PeerEventListener;
 import p2p.peer.messaging.GossipManager;
 
@@ -36,9 +37,12 @@ public class LeaderElectionManager {
 
     private final List<PeerEventListener> listeners = new CopyOnWriteArrayList<>();
 
-    public LeaderElectionManager(User localUser, GroupManager groupManager) {
+    private final VectorClock vectorClock;
+
+    public LeaderElectionManager(User localUser, GroupManager groupManager, VectorClock vectorClock) {
         this.localUser = localUser;
         this.groupManager = groupManager;
+        this.vectorClock = vectorClock;
     }
 
     public void addEventListener(PeerEventListener listener) {
@@ -171,7 +175,8 @@ public class LeaderElectionManager {
         ElectionMessage proposal = ElectionMessage.create(
                 localUser.getUserId(), groupId,
                 ElectionMessage.ElectionType.PROPOSAL,
-                localUser.getUserId(), newEpoch);
+                localUser.getUserId(), newEpoch,
+                vectorClock.clone());
 
         broadcastToGroup(group, proposal);
 
@@ -184,15 +189,15 @@ public class LeaderElectionManager {
      * This ensures all nodes agree on who should propose.
      */
     private String determineCandidateLexicographically(Group group) {
-        List<String> allMemberIds = new ArrayList<>();
+        List<String> allMemberIds = group.getMembers().stream().map(User::getUserId).collect(Collectors.toList());
 
-        // Add all members
-        for (User member : group.getMembers()) {
-            allMemberIds.add(member.getUserId());
+        // Do NOT add current leader - we are electing a replacement because they failed
+
+        if (allMemberIds.isEmpty()) {
+            // Should not happen if we checked group size before
+            // I plan on throwing an error here.
+            return "";
         }
-
-        // Add current leader (in case they're still in group but failed)
-        allMemberIds.add(group.getLeaderId());
 
         // Sort lexicographically and pick the highest (last in sorted order)
         Collections.sort(allMemberIds);
@@ -206,6 +211,15 @@ public class LeaderElectionManager {
         Group group = groupManager.getGroup(message.getGroupId());
         if (group == null) {
             notifyLog("Ignoring proposal - group not found: " + message.getGroupId());
+            return;
+        }
+
+        // Validate sender is a member of the group (or the failed leader)
+        // This allows non-friends to participate in election as long as they are in the
+        // group
+        String senderId = message.getSenderId();
+        if (!group.isMember(senderId) && !senderId.equals(group.getLeaderId())) {
+            notifyLog("Ignoring proposal from non-member: " + senderId);
             return;
         }
 
@@ -258,7 +272,8 @@ public class LeaderElectionManager {
         ElectionMessage vote = ElectionMessage.create(
                 localUser.getUserId(), groupId,
                 ElectionMessage.ElectionType.VOTE,
-                message.getCandidateId(), proposalEpoch);
+                message.getCandidateId(), proposalEpoch,
+                vectorClock.clone());
 
         // Send directly to the candidate
         sendMessageToUser(message.getSenderId(), vote, group);
@@ -365,7 +380,8 @@ public class LeaderElectionManager {
         ElectionMessage result = ElectionMessage.create(
                 localUser.getUserId(), groupId,
                 ElectionMessage.ElectionType.RESULT,
-                winner, state.epoch);
+                winner, state.epoch,
+                vectorClock.clone());
 
         broadcastToGroup(updatedGroup, result);
 
@@ -427,13 +443,28 @@ public class LeaderElectionManager {
                     " at " + member.getIpAddress() + ":" + member.getRmiPort());
 
             executor.submit(() -> {
-                try {
-                    Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
-                    PeerService peerService = (PeerService) registry.lookup("PeerService");
-                    peerService.receiveMessage(message);
-                    notifyLog("Successfully sent to " + member.getUsername());
-                } catch (Exception e) {
-                    notifyError("Failed to send to " + member.getUsername(), e);
+                int maxRetries = 3;
+                for (int i = 0; i < maxRetries; i++) {
+                    try {
+                        Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
+                        PeerService peerService = (PeerService) registry.lookup("PeerService");
+                        peerService.receiveMessage(message);
+                        notifyLog("Successfully sent to " + member.getUsername());
+                        return; // Success
+                    } catch (Exception e) {
+                        if (i == maxRetries - 1) {
+                            notifyError(
+                                    "Failed to send to " + member.getUsername() + " after " + maxRetries + " attempts",
+                                    e);
+                        } else {
+                            try {
+                                Thread.sleep(500 * (i + 1)); // Backoff
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                return;
+                            }
+                        }
+                    }
                 }
             });
         }

@@ -48,6 +48,7 @@ public abstract class Message implements Serializable {
 
     /**
      * Gets the vector clock associated with this message.
+     * 
      * @return a defensive copy of the vector clock, or null if not set
      */
     public VectorClock getVectorClock() {

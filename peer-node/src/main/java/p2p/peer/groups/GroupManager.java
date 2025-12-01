@@ -1,6 +1,7 @@
 package p2p.peer.groups;
 
 import p2p.common.model.Group;
+import p2p.common.model.GroupEvent;
 import p2p.common.model.User;
 import p2p.common.model.message.*;
 import p2p.common.vectorclock.VectorClock;
@@ -13,7 +14,6 @@ import java.rmi.registry.Registry;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
 
 /**
  * Manages active groups, membership, and leader election.
@@ -29,16 +29,16 @@ public class GroupManager {
     // groupId -> Group
     private final Map<String, Group> groups = new ConcurrentHashMap<>();
 
-    // groupId -> List<Message>
-    private final Map<String, List<Message>> groupMessages = new ConcurrentHashMap<>();
+    // groupId -> Set<Message>
+    private final Map<String, Set<ChatMessage>> groupMessages = new ConcurrentHashMap<>();
 
-    // groupId -> PendingGroup (for groups awaiting invitation responses - as creator)
+    // groupId -> PendingGroup (for groups awaiting invitation responses - as
+    // creator)
     private final Map<String, PendingGroup> pendingGroups = new ConcurrentHashMap<>();
-    
-    // groupId -> GroupInvitationMessage (for pending invitations we received - as invitee)
-    private final Map<String, GroupInvitationMessage> pendingInvitations = new ConcurrentHashMap<>();
 
-    private static final int MIN_GROUP_SIZE = 3; // Creator + 2 others
+    // groupId -> GroupInvitationMessage (for pending invitations we received - as
+    // invitee)
+    private final Map<String, GroupInvitationMessage> pendingInvitations = new ConcurrentHashMap<>();
 
     private LeaderElectionManager electionManager;
 
@@ -88,7 +88,8 @@ public class GroupManager {
                 localUser.getUserId(),
                 groupId,
                 name,
-                new ArrayList<>(potentialMembers));
+                new ArrayList<>(potentialMembers),
+                vectorClock.clone());
 
         for (User member : potentialMembers) {
             try {
@@ -148,7 +149,8 @@ public class GroupManager {
         }
 
         // Send acceptance response
-        GroupInvitationMessage response = GroupInvitationMessage.createAccept(localUser.getUserId(), groupId);
+        GroupInvitationMessage response = GroupInvitationMessage.createAccept(localUser.getUserId(), groupId,
+                vectorClock.clone());
         sendInvitationResponse(creator, response);
 
         notifyLog("Accepted invitation to group " + groupId);
@@ -166,7 +168,8 @@ public class GroupManager {
         User creator = friendManager.getFriendById(request.getSenderId());
         if (creator != null) {
             // Send rejection response
-            GroupInvitationMessage response = GroupInvitationMessage.createReject(localUser.getUserId(), groupId);
+            GroupInvitationMessage response = GroupInvitationMessage.createReject(localUser.getUserId(), groupId,
+                    vectorClock.clone());
             sendInvitationResponse(creator, response);
         }
 
@@ -282,7 +285,7 @@ public class GroupManager {
 
         // Add to active groups
         groups.put(groupId, finalizedGroup);
-        groupMessages.put(groupId, new ArrayList<>());
+        groupMessages.put(groupId, Collections.synchronizedSet(new LinkedHashSet<>()));
 
         // Clean up pending state
         pendingGroups.remove(groupId);
@@ -295,7 +298,7 @@ public class GroupManager {
         notifyLog("Group '" + pending.getGroupName() + "' finalized with " +
                 (finalMembers.size() + 1) + " total members");
 
-        notifyGroupEvent(groupId, "CREATED", "Group finalized");
+        notifyGroupEvent(groupId, GroupEvent.CREATED, "Group finalized");
 
         // Broadcast group creation notification to all accepted members
         broadcastGroupFinalization(finalizedGroup, new ArrayList<>(finalMembers));
@@ -334,12 +337,12 @@ public class GroupManager {
             // Update existing group (e.g. new member joined)
             groups.put(group.getGroupId(), group);
             notifyLog("Updated group '" + group.getName() + "' with " + (group.getMembers().size() + 1) + " members");
-            notifyGroupEvent(group.getGroupId(), "UPDATED", "Group updated");
+            notifyGroupEvent(group.getGroupId(), GroupEvent.UPDATED, "Group updated");
             return;
         }
 
         groups.put(group.getGroupId(), group);
-        groupMessages.put(group.getGroupId(), new ArrayList<>());
+        groupMessages.put(group.getGroupId(), Collections.synchronizedSet(new LinkedHashSet<>()));
 
         // Record initial leader activity
         if (electionManager != null) {
@@ -348,7 +351,7 @@ public class GroupManager {
 
         notifyLog("Added finalized group '" + group.getName() + "' with " +
                 (group.getMembers().size() + 1) + " total members");
-        notifyGroupEvent(group.getGroupId(), "JOINED", "Joined group");
+        notifyGroupEvent(group.getGroupId(), GroupEvent.CREATED, "Joined group");
     }
 
     /**
@@ -367,7 +370,7 @@ public class GroupManager {
         if (group != null) {
             groupMessages.remove(groupId);
             notifyLog("Group '" + group.getName() + "' dissolved (fell below minimum size)");
-            notifyGroupEvent(groupId, "DISSOLVED", "Group dissolved");
+            notifyGroupEvent(groupId, GroupEvent.DISSOLVED, "Group dissolved");
         }
     }
 
@@ -406,33 +409,26 @@ public class GroupManager {
      * Adds a message to the group history.
      * Note: Listener notification is handled by PeerController.handleChatMessage()
      */
-    public void addMessage(String groupId, Message message) {
-        List<Message> messages = groupMessages.computeIfAbsent(groupId, k -> new ArrayList<>());
-        // Check for duplicates by message ID
-        boolean exists = messages.stream()
-                .anyMatch(m -> m.getMessageId().equals(message.getMessageId()));
-        if (!exists) {
-            messages.add(message);
-        }
+    public void addMessage(String groupId, ChatMessage message) {
+        groupMessages.computeIfAbsent(groupId,
+                k -> new ConcurrentSkipListSet<>(new CausalOrderComparator()));
+        groupMessages.get(groupId).add(message);
     }
 
     /**
      * Adds multiple messages to the group history, filtering out duplicates.
      */
-    public void addMessages(String groupId, List<Message> newMessages) {
-        List<Message> messages = groupMessages.computeIfAbsent(groupId, k -> new ArrayList<>());
-        Set<String> existingIds = messages.stream()
-                .map(Message::getMessageId)
-                .collect(Collectors.toSet());
+    public void addMessages(String groupId, List<ChatMessage> newMessages) {
+        Set<ChatMessage> messages = groupMessages.computeIfAbsent(groupId,
+                k -> new ConcurrentSkipListSet<>(new CausalOrderComparator()));
 
-        for (Message msg : newMessages) {
-            if (!existingIds.contains(msg.getMessageId())) {
-                messages.add(msg);
-                existingIds.add(msg.getMessageId());
-                
+        for (ChatMessage msg : newMessages) {
+            if (messages.add(msg)) {
                 // Notify listeners about each new message
-                for (PeerEventListener listener : listeners) {
-                    listener.onMessageReceived(msg);
+                synchronized (listeners) {
+                    for (PeerEventListener listener : listeners) {
+                        listener.onMessageReceived(msg);
+                    }
                 }
             }
         }
@@ -441,8 +437,8 @@ public class GroupManager {
     /**
      * Gets messages for a group.
      */
-    public List<Message> getMessages(String groupId) {
-        return new ArrayList<>(groupMessages.getOrDefault(groupId, Collections.emptyList()));
+    public List<ChatMessage> getMessages(String groupId) {
+        return new ArrayList<>(groupMessages.getOrDefault(groupId, Collections.emptySet()));
     }
 
     /**
@@ -450,10 +446,10 @@ public class GroupManager {
      * Merges vector clocks of all messages in the group.
      */
     public VectorClock getLatestClock(String groupId) {
-        List<Message> messages = groupMessages.getOrDefault(groupId, Collections.emptyList());
+        Set<ChatMessage> messages = groupMessages.getOrDefault(groupId, Collections.emptySet());
         VectorClock merged = new VectorClock();
 
-        for (Message msg : messages) {
+        for (ChatMessage msg : messages) {
             VectorClock msgClock = msg.getVectorClock();
             if (msgClock != null) {
                 merged.update(msgClock);
@@ -474,7 +470,7 @@ public class GroupManager {
         }
     }
 
-    private void notifyGroupEvent(String groupId, String type, String message) {
+    private void notifyGroupEvent(String groupId, GroupEvent type, String message) {
         for (PeerEventListener listener : listeners) {
             listener.onGroupEvent(groupId, type, message);
         }

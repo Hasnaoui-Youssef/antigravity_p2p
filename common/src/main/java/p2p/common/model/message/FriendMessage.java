@@ -2,6 +2,7 @@ package p2p.common.model.message;
 
 import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
+import p2p.common.vectorclock.VectorClock;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -21,19 +22,20 @@ public final class FriendMessage extends Message {
     private final SubTopic friendMessageType;
 
     private FriendMessage(String messageId, String senderId, long timestamp, User sender,
-            SubTopic messageType) {
-        super(messageId, senderId, timestamp, MessageTopic.FRIEND_MESSAGE);
+            SubTopic messageType, VectorClock vectorClock) {
+        super(messageId, senderId, timestamp, MessageTopic.FRIEND_MESSAGE, vectorClock);
         this.sender = Objects.requireNonNull(sender);
         this.friendMessageType = Objects.requireNonNull(messageType);
     }
 
-    public static FriendMessage create(User sender, SubTopic messageType) {
+    public static FriendMessage create(User sender, SubTopic messageType, VectorClock vectorClock) {
         return new FriendMessage(
                 UUID.randomUUID().toString(),
                 sender.getUserId(),
                 Instant.now().toEpochMilli(),
                 sender,
-                messageType);
+                messageType,
+                vectorClock);
     }
 
     public User getSender() {

@@ -15,32 +15,32 @@ import java.util.function.Consumer;
  * 
  * A message is deliverable when:
  * 1. msgClock[sender] == localClock[sender] + 1 (next expected from sender)
- * 2. For all other processes p: msgClock[p] <= localClock[p] (no unknown causal dependencies)
+ * 2. For all other processes p: msgClock[p] <= localClock[p] (no unknown causal
+ * dependencies)
  */
 public class CausalDeliveryManager {
-    
-    private final String localProcessId;
+
     private final VectorClock localClock;
     private final Map<String, Queue<Message>> pendingMessages;
-    
+
     /**
      * Creates a new CausalDeliveryManager.
      * 
-     * @param localProcessId The ID of the local process
-     * @param localClock The local vector clock (will be updated on message delivery)
+     * @param localClock The local vector clock (will be updated on message
+     *                   delivery)
      */
-    public CausalDeliveryManager(String localProcessId, VectorClock localClock) {
-        this.localProcessId = Objects.requireNonNull(localProcessId);
+    public CausalDeliveryManager(VectorClock localClock) {
         this.localClock = Objects.requireNonNull(localClock);
         this.pendingMessages = new ConcurrentHashMap<>();
     }
-    
+
     /**
      * Checks if a message is deliverable based on causal ordering.
      * 
      * A message is deliverable when:
      * 1. msgClock[sender] == localClock[sender] + 1 (next expected from sender)
-     * 2. For all other processes p: msgClock[p] <= localClock[p] (no unknown causal dependencies)
+     * 2. For all other processes p: msgClock[p] <= localClock[p] (no unknown causal
+     * dependencies)
      * 
      * @param message The message to check
      * @return true if the message can be delivered, false if it should be buffered
@@ -51,44 +51,47 @@ public class CausalDeliveryManager {
             // Messages without vector clocks are always deliverable
             return true;
         }
-        
+
         String senderId = message.getSenderId();
         Map<String, Integer> msgClockSnapshot = msgClock.getClockSnapshot();
-        
+
         synchronized (localClock) {
             // Check condition 1: msgClock[sender] == localClock[sender] + 1
             int msgSenderTime = msgClockSnapshot.getOrDefault(senderId, 0);
             int localSenderTime = localClock.getTime(senderId);
-            
+
             if (msgSenderTime != localSenderTime + 1) {
                 return false;
             }
-            
+
             // Check condition 2: For all other processes p: msgClock[p] <= localClock[p]
             for (Map.Entry<String, Integer> entry : msgClockSnapshot.entrySet()) {
                 String processId = entry.getKey();
                 if (processId.equals(senderId)) {
-                    continue;  // Already checked above
+                    continue; // Already checked above
                 }
-                
+
                 int msgTime = entry.getValue();
                 int localTime = localClock.getTime(processId);
-                
+
                 if (msgTime > localTime) {
-                    return false;  // Unknown causal dependency
+                    return false; // Unknown causal dependency
                 }
             }
         }
-        
+
         return true;
     }
-    
+
     /**
-     * Attempts to deliver a message, buffering it if causal dependencies are not met.
-     * After delivering a message, checks if any buffered messages become deliverable.
+     * Attempts to deliver a message, buffering it if causal dependencies are not
+     * met.
+     * After delivering a message, checks if any buffered messages become
+     * deliverable.
      * 
-     * @param message The message to deliver
-     * @param deliveryCallback Called for each message that is delivered (in causal order)
+     * @param message          The message to deliver
+     * @param deliveryCallback Called for each message that is delivered (in causal
+     *                         order)
      */
     public void bufferOrDeliver(Message message, Consumer<Message> deliveryCallback) {
         if (isDeliverable(message)) {
@@ -99,7 +102,7 @@ public class CausalDeliveryManager {
             bufferMessage(message);
         }
     }
-    
+
     /**
      * Delivers a message and updates the local clock.
      */
@@ -112,7 +115,7 @@ public class CausalDeliveryManager {
         }
         callback.accept(message);
     }
-    
+
     /**
      * Buffers a message for later delivery.
      */
@@ -120,7 +123,7 @@ public class CausalDeliveryManager {
         String senderId = message.getSenderId();
         pendingMessages.computeIfAbsent(senderId, k -> new ConcurrentLinkedQueue<>()).add(message);
     }
-    
+
     /**
      * Attempts to deliver any buffered messages that are now deliverable.
      * Continues until no more messages can be delivered.
@@ -129,19 +132,19 @@ public class CausalDeliveryManager {
         boolean delivered;
         do {
             delivered = false;
-            
+
             // Collect all pending messages
             List<Message> allPending = new ArrayList<>();
             for (Queue<Message> queue : pendingMessages.values()) {
                 allPending.addAll(queue);
             }
-            
+
             // Sort by sender time to try delivering in order
             allPending.sort(Comparator.comparing(m -> {
                 VectorClock clock = m.getVectorClock();
                 return clock != null ? clock.getTime(m.getSenderId()) : 0;
             }));
-            
+
             // Try to deliver each pending message
             for (Message pending : allPending) {
                 if (isDeliverable(pending)) {
@@ -154,7 +157,7 @@ public class CausalDeliveryManager {
                             pendingMessages.remove(senderId);
                         }
                     }
-                    
+
                     // Deliver the message
                     deliverMessage(pending, deliveryCallback);
                     delivered = true;
@@ -162,7 +165,7 @@ public class CausalDeliveryManager {
             }
         } while (delivered);
     }
-    
+
     /**
      * Gets the count of pending (buffered) messages.
      * 
@@ -173,7 +176,7 @@ public class CausalDeliveryManager {
                 .mapToInt(Queue::size)
                 .sum();
     }
-    
+
     /**
      * Gets all pending (buffered) messages.
      * 

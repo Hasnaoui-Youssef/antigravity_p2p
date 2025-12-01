@@ -5,10 +5,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 import p2p.common.model.message.ChatMessage;
-import p2p.common.model.message.ChatSubtopic;
-import p2p.common.model.message.Message;
-import p2p.common.model.MessageTopic;
-import p2p.common.model.User;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -47,7 +43,7 @@ class MessageTest {
         assertEquals(sender.getUsername(), msg.getSenderUsername());
         assertEquals("receiver-id", msg.getTargetId());
         assertEquals("Test message", msg.getContent());
-        assertEquals(ChatSubtopic.DIRECT, msg.getSubtopic());
+        assertEquals(ChatMessage.ChatSubtopic.DIRECT, msg.getSubtopic());
     }
 
     @Test
@@ -78,11 +74,11 @@ class MessageTest {
     @DisplayName("Equals should compare by message ID")
     void testEquals() {
         ChatMessage msg1 = new ChatMessage("msg123", sender.getUserId(), sender.getUsername(),
-                "receiver", "content1", 1000, ChatSubtopic.DIRECT, clock);
+                "receiver", "content1", 1000, ChatMessage.ChatSubtopic.DIRECT, clock);
         ChatMessage msg2 = new ChatMessage("msg123", sender.getUserId(), sender.getUsername(),
-                "receiver", "content2", 2000, ChatSubtopic.DIRECT, clock); // Different content but same ID
+                "receiver", "content2", 2000, ChatMessage.ChatSubtopic.DIRECT, clock); // Different content but same ID
         ChatMessage msg3 = new ChatMessage("msg456", sender.getUserId(), sender.getUsername(),
-                "receiver", "content1", 1000, ChatSubtopic.DIRECT, clock);
+                "receiver", "content1", 1000, ChatMessage.ChatSubtopic.DIRECT, clock);
 
         assertEquals(msg1, msg2);
         assertNotEquals(msg1, msg3);

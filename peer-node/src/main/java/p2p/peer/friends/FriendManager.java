@@ -62,7 +62,8 @@ public class FriendManager {
         PeerService peerService = (PeerService) registry.lookup("PeerService");
 
         // Send friend request message
-        FriendMessage message = FriendMessage.create(localUser, FriendMessage.SubTopic.FRIEND_REQUEST);
+        FriendMessage message = FriendMessage.create(localUser, FriendMessage.SubTopic.FRIEND_REQUEST,
+                vectorClock.clone());
         peerService.receiveMessage(message);
 
         notifyLog("Friend request sent to " + target.getUsername());
@@ -74,7 +75,7 @@ public class FriendManager {
     public void acceptFriendRequest(String username) throws Exception {
         // Find request by username
         User requester = pendingRequests.values().stream()
-                .filter(u -> u.getUsername().equals(username))
+                .filter(u -> u.getUsername().toLowerCase().equals(username.toLowerCase()))
                 .findFirst()
                 .orElse(null);
 
@@ -87,7 +88,7 @@ public class FriendManager {
     public void rejectFriendRequest(String username) throws Exception {
         // Find request by username
         User requester = pendingRequests.values().stream()
-                .filter(u -> u.getUsername().equals(username))
+                .filter(u -> u.getUsername().equals(username.toLowerCase()))
                 .findFirst()
                 .orElse(null);
 
@@ -101,7 +102,8 @@ public class FriendManager {
             try {
                 Registry registry = LocateRegistry.getRegistry(requester.getIpAddress(), requester.getRmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
-                FriendMessage message = FriendMessage.create(localUser, FriendMessage.SubTopic.FRIEND_REJECT);
+                FriendMessage message = FriendMessage.create(localUser, FriendMessage.SubTopic.FRIEND_REJECT,
+                        vectorClock.clone());
                 peerService.receiveMessage(message);
             } catch (Exception e) {
                 notifyLog("Failed to send reject message to " + username);
@@ -125,7 +127,8 @@ public class FriendManager {
         Registry registry = LocateRegistry.getRegistry(requester.getIpAddress(), requester.getRmiPort());
         PeerService peerService = (PeerService) registry.lookup("PeerService");
 
-        FriendMessage message = FriendMessage.create(localUser, FriendMessage.SubTopic.FRIEND_ACCEPT);
+        FriendMessage message = FriendMessage.create(localUser, FriendMessage.SubTopic.FRIEND_ACCEPT,
+                vectorClock.clone());
         peerService.receiveMessage(message);
 
         notifyLog("Accepted friend request from " + requester.getUsername());
@@ -167,21 +170,21 @@ public class FriendManager {
 
     private void addFriend(User friend) {
         friends.put(friend.getUserId(), friend);
-        friendUserNameToId.put(friend.getUsername(), friend.getUserId());
+        friendUserNameToId.put(friend.getUsername().toLowerCase(), friend.getUserId());
     }
 
     /**
      * Check if a user is a friend.
      */
     public boolean isFriend(String userId) {
-        return friends.containsKey(userId);
+        return friends.containsKey(userId.toLowerCase());
     }
 
     /**
      * Get a friend by username.
      */
     public User getFriendByUsername(String username) {
-        String userId = friendUserNameToId.get(username);
+        String userId = friendUserNameToId.get(username.toLowerCase());
         if (userId == null)
             return null;
         return friends.get(userId);

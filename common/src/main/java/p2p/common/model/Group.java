@@ -1,7 +1,5 @@
 package p2p.common.model;
 
-import p2p.common.vectorclock.VectorClock;
-
 import java.io.Serializable;
 import java.util.*;
 
@@ -38,12 +36,11 @@ public final class Group implements Serializable {
             }
         }
         return new Group(
-            UUID.randomUUID().toString(),
-            name,
-            creator.getUserId(),
-            memberSet,
-            0
-        );
+                UUID.randomUUID().toString(),
+                name,
+                creator.getUserId(),
+                memberSet,
+                0);
     }
 
     public String getGroupId() {
@@ -87,8 +84,10 @@ public final class Group implements Serializable {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o)
+            return true;
+        if (o == null || getClass() != o.getClass())
+            return false;
         Group group = (Group) o;
         return groupId.equals(group.groupId);
     }
@@ -101,6 +100,6 @@ public final class Group implements Serializable {
     @Override
     public String toString() {
         return String.format("Group{id='%s', name='%s', leader='%s', members=%d, epoch=%d}",
-            groupId, name, leaderId, members.size(), epoch);
+                groupId, name, leaderId, members.size(), epoch);
     }
 }
