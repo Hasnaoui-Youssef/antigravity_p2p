@@ -82,12 +82,12 @@ class PeerIntegrationTest {
 
         alice.start();
         assertTrue(alice.isStarted());
-        assertEquals("Alice", alice.getLocalUser().getUsername());
+        assertEquals("Alice", alice.getLocalUser().username());
 
         alice.stop();
         assertFalse(alice.isStarted());
 
-        System.out.println("[Test] ✓ Peer lifecycle works");
+        System.out.println("[Test]  Peer lifecycle works");
     }
 
     @Test
@@ -107,14 +107,14 @@ class PeerIntegrationTest {
             // Alice searches for Bob
             var users = alice.searchUsers("Bob");
             assertEquals(1, users.size());
-            assertEquals("Bob", users.get(0).getUsername());
+            assertEquals("Bob", users.get(0).username());
 
             // Bob searches for Alice
             users = bob.searchUsers("Alice");
             assertEquals(1, users.size());
-            assertEquals("Alice", users.get(0).getUsername());
+            assertEquals("Alice", users.get(0).username());
 
-            System.out.println("[Test] ✓ Peer discovery works");
+            System.out.println("[Test]  Peer discovery works");
         } finally {
             alice.stop();
             bob.stop();
@@ -140,17 +140,17 @@ class PeerIntegrationTest {
             // Bob should have pending request
             var bobPending = bob.getPendingRequests();
             assertEquals(1, bobPending.size());
-            assertEquals("Alice", bobPending.get(0).getUsername());
+            assertEquals("Alice", bobPending.get(0).username());
 
             // Bob accepts
             bob.acceptFriendRequest("Alice");
             Thread.sleep(500);
 
             // Both should be friends now
-            assertTrue(bob.getFriends().stream().anyMatch(u -> u.getUsername().equals("Alice")));
-            assertTrue(alice.getFriends().stream().anyMatch(u -> u.getUsername().equals("Bob")));
+            assertTrue(bob.getFriends().stream().anyMatch(u -> u.username().equals("Alice")));
+            assertTrue(alice.getFriends().stream().anyMatch(u -> u.username().equals("Bob")));
 
-            System.out.println("[Test] ✓ Friend request flow works");
+            System.out.println("[Test]  Friend request flow works");
         } finally {
             alice.stop();
             bob.stop();
@@ -169,8 +169,8 @@ class PeerIntegrationTest {
             bob.start();
             Thread.sleep(1000);
 
-            String aliceId = alice.getLocalUser().getUserId();
-            String bobId = bob.getLocalUser().getUserId();
+            String aliceId = alice.getLocalUser().userId();
+            String bobId = bob.getLocalUser().userId();
 
             // Initial state: each peer only knows their own clock
             assertEquals(1, alice.getVectorClock().getTime(aliceId));
@@ -190,7 +190,7 @@ class PeerIntegrationTest {
             // Alice's clock should now include Bob's time
             assertTrue(alice.getVectorClock().getTime(bobId) > 0);
 
-            System.out.println("[Test] ✓ Vector clocks synchronized");
+            System.out.println("[Test]  Vector clocks synchronized");
         } finally {
             alice.stop();
             bob.stop();
@@ -220,7 +220,7 @@ class PeerIntegrationTest {
             // Bob should only have one pending request
             assertEquals(1, bob.getPendingRequests().size());
 
-            System.out.println("[Test] ✓ Duplicate friend requests handled correctly");
+            System.out.println("[Test]  Duplicate friend requests handled correctly");
         } finally {
             alice.stop();
             bob.stop();
@@ -255,7 +255,7 @@ class PeerIntegrationTest {
             assertNotNull(bob.getMessageHandler());
             assertNotNull(alice.getMessageHandler());
 
-            System.out.println("[Test] ✓ Messaging works");
+            System.out.println("[Test]  Messaging works");
         } finally {
             alice.stop();
             bob.stop();
@@ -276,19 +276,19 @@ class PeerIntegrationTest {
             charlie.start();
             Thread.sleep(1000);
 
-            // Alice → Bob
+            // Alice -> Bob
             alice.sendFriendRequest("Bob");
             Thread.sleep(300);
             bob.acceptFriendRequest("Alice");
             Thread.sleep(300);
 
-            // Bob → Charlie
+            // Bob -> Charlie
             bob.sendFriendRequest("Charlie");
             Thread.sleep(300);
             charlie.acceptFriendRequest("Bob");
             Thread.sleep(300);
 
-            // Alice → Charlie
+            // Alice -> Charlie
             alice.sendFriendRequest("Charlie");
             Thread.sleep(300);
             charlie.acceptFriendRequest("Alice");
@@ -299,7 +299,7 @@ class PeerIntegrationTest {
             assertEquals(2, bob.getFriends().size()); // Alice, Charlie
             assertEquals(2, charlie.getFriends().size()); // Alice, Bob
 
-            System.out.println("[Test] ✓ Three-peer interaction works");
+            System.out.println("[Test]  Three-peer interaction works");
         } finally {
             alice.stop();
             bob.stop();
@@ -329,31 +329,36 @@ class PeerIntegrationTest {
             VectorClock aliceClockM1 = alice.getVectorClock().clone();
             VectorClock bobClockInitial = bob.getVectorClock().clone();
 
-            // Send M1: Alice → Bob
+            // Send M1: Alice -> Bob
             alice.sendMessage("Bob", "M1");
             Thread.sleep(300);
             VectorClock aliceClockM2 = alice.getVectorClock().clone();
             VectorClock bobClockM1 = bob.getVectorClock().clone();
 
-            // Send M2: Bob → Alice
+            // Send M2: Bob -> Alice
             bob.sendMessage("Alice", "M2");
             Thread.sleep(300);
             VectorClock bobClockM2 = bob.getVectorClock().clone();
             VectorClock aliceClockM3 = alice.getVectorClock().clone();
 
-            // Send M3: Alice → Bob
+            // Send M3: Alice -> Bob
             alice.sendMessage("Bob", "M3");
             Thread.sleep(300);
             VectorClock bobClockM3 = bob.getVectorClock().clone();
 
-            // Verify causality: M1 → M2 → M3
+            // We first assert the causality per user
+            assertTrue(aliceClockM1.happensBefore(aliceClockM2) && aliceClockM2.happensBefore(aliceClockM3));
+            assertTrue(bobClockInitial.happensBefore(bobClockM1) && bobClockM1.happensBefore(bobClockM2)
+                    && bobClockM2.happensBefore(bobClockM3));
+
+            // Verify causality: M1 -> M2 -> M3
             // M1 happens before M2
             assertTrue(aliceClockM2.happensBefore(bobClockM2) || aliceClockM2.equals(bobClockM2));
 
             // M2 happens before M3
             assertTrue(bobClockM2.happensBefore(bobClockM3) || bobClockM2.equals(bobClockM3));
 
-            System.out.println("[Test] ✓ Message causality chain preserved (M1→M2→M3)");
+            System.out.println("[Test]  Message causality chain preserved (M1 -> M2 -> M3)");
         } finally {
             alice.stop();
             bob.stop();
@@ -373,7 +378,7 @@ class PeerIntegrationTest {
             Thread.sleep(1000);
 
             // Alice and Charlie are NOT friends
-            assertFalse(alice.getFriends().stream().anyMatch(u -> u.getUsername().equals("Charlie")));
+            assertFalse(alice.getFriends().stream().anyMatch(u -> u.username().equals("Charlie")));
 
             // Alice tries to send message to Charlie (should fail)
             Exception exception = assertThrows(IllegalArgumentException.class, () -> {
@@ -382,7 +387,7 @@ class PeerIntegrationTest {
 
             assertTrue(exception.getMessage().contains("Not a friend"));
 
-            System.out.println("[Test] ✓ Cannot send message to non-friend");
+            System.out.println("[Test]  Cannot send message to non-friend");
         } finally {
             alice.stop();
             charlie.stop();
@@ -425,7 +430,7 @@ class PeerIntegrationTest {
                         "Message " + (i + 1) + " should happen-before message " + (i + 2));
             }
 
-            System.out.println("[Test] ✓ Multiple messages preserve ordering");
+            System.out.println("[Test]  Multiple messages preserve ordering");
         } finally {
             alice.stop();
             bob.stop();

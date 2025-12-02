@@ -1,5 +1,6 @@
 package p2p.common.vectorclock;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
@@ -11,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * in distributed systems.
  */
 public class VectorClock implements Serializable, Cloneable {
+    @Serial
     private static final long serialVersionUID = 1L;
     
     private final Map<String, Integer> clock;

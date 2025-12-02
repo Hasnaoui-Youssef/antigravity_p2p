@@ -13,6 +13,12 @@ build/
 *.swo
 *~
 
+*/.classpath
+*/.project
+*/.metadata/*
+*/.settings/*
+jdt.ls-java-project/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -26,7 +32,6 @@ Thumbs.db
 hs_err_pid*
 
 # Test outputs
-*.log
 test-output/
 
 # Docker

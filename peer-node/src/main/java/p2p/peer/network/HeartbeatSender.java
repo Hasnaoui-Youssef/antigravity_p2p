@@ -32,15 +32,7 @@ public class HeartbeatSender implements Runnable {
             while (running) {
                 try {
                     // Format: HEARTBEAT|userId|username|ip|port
-                    String message = String.format("HEARTBEAT|%s|%s|%s|%d",
-                        localUser.getUserId(),
-                        localUser.getUsername(),
-                        localUser.getIpAddress(),
-                        localUser.getRmiPort()
-                    );
-                    
-                    byte[] buffer = message.getBytes();
-                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, bootstrapPort);
+                    DatagramPacket packet = getDatagramPacket(address);
                     socket.send(packet);
                     
                     Thread.sleep(HEARTBEAT_INTERVAL_MS);
@@ -56,7 +48,19 @@ public class HeartbeatSender implements Runnable {
             System.err.println("[Heartbeat] Failed to create socket: " + e.getMessage());
         }
     }
-    
+
+    private DatagramPacket getDatagramPacket(InetAddress address) {
+        String message = String.format("HEARTBEAT|%s|%s|%s|%d",
+            localUser.userId(),
+            localUser.username(),
+            localUser.ipAddress(),
+            localUser.rmiPort()
+        );
+
+        byte[] buffer = message.getBytes();
+        return new DatagramPacket(buffer, buffer.length, address, bootstrapPort);
+    }
+
     public void stop() {
         running = false;
     }

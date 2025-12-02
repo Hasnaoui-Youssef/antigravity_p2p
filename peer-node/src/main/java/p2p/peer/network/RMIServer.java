@@ -9,17 +9,17 @@ import java.rmi.registry.Registry;
  * Manages the RMI server for this peer.
  */
 public class RMIServer {
-    
+
     private final int port;
     private final String serviceName;
     private PeerService service;
     private Registry registry;
-    
+
     public RMIServer(int port, String serviceName) {
         this.port = port;
         this.serviceName = serviceName;
     }
-    
+
     /**
      * Start the RMI server and export the service.
      */
@@ -28,6 +28,14 @@ public class RMIServer {
      */
     public void start(PeerService serviceImpl) throws Exception {
         this.service = serviceImpl;
+
+        // Ensure the service is exported
+        try {
+            java.rmi.server.UnicastRemoteObject.exportObject(service, 0);
+        } catch (java.rmi.server.ExportException e) {
+            // Already exported, ignore
+        }
+
         try {
             this.registry = LocateRegistry.createRegistry(port);
         } catch (java.rmi.server.ExportException e) {
@@ -37,7 +45,7 @@ public class RMIServer {
         registry.rebind(serviceName, service);
         System.out.println("[RMI] Server started on port " + port);
     }
-    
+
     /**
      * Stop the RMI server.
      */
@@ -50,7 +58,7 @@ public class RMIServer {
                     // Ignore if already unbound
                 }
             }
-            
+
             if (service != null) {
                 java.rmi.server.UnicastRemoteObject.unexportObject(service, true);
             }
