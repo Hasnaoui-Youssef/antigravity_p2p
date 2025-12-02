@@ -3,5 +3,6 @@ package p2p.common.model;
 public enum GroupEvent {
     CREATED,
     DISSOLVED,
-    UPDATED,
+    USER_JOINED,
+    USER_LEFT,
 }

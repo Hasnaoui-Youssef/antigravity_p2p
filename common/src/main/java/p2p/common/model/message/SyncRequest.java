@@ -3,6 +3,7 @@ package p2p.common.model.message;
 import p2p.common.model.MessageTopic;
 import p2p.common.vectorclock.VectorClock;
 
+import java.io.Serial;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import java.util.UUID;
  * Request to synchronize missing messages for a group.
  */
 public final class SyncRequest extends Message {
+    @Serial
     private static final long serialVersionUID = 1L;
 
     private final String groupId;

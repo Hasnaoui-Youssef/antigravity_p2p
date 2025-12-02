@@ -4,6 +4,7 @@ import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
 import p2p.common.vectorclock.VectorClock;
 
+import java.io.Serial;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -13,6 +14,7 @@ import java.util.UUID;
  * Uses the subtopic pattern to distinguish between message types.
  */
 public final class ChatMessage extends Message {
+    @Serial
     private static final long serialVersionUID = 1L;
 
     public enum ChatSubtopic {
@@ -41,8 +43,8 @@ public final class ChatMessage extends Message {
     public static ChatMessage createDirect(User sender, String receiverId, String content, VectorClock clock) {
         return new ChatMessage(
                 UUID.randomUUID().toString(),
-                sender.getUserId(),
-                sender.getUsername(),
+                sender.userId(),
+                sender.username(),
                 receiverId,
                 content,
                 Instant.now().toEpochMilli(),
@@ -56,8 +58,8 @@ public final class ChatMessage extends Message {
     public static ChatMessage createGroup(User sender, String groupId, String content, VectorClock clock) {
         return new ChatMessage(
                 UUID.randomUUID().toString(),
-                sender.getUserId(),
-                sender.getUsername(),
+                sender.userId(),
+                sender.username(),
                 groupId,
                 content,
                 Instant.now().toEpochMilli(),

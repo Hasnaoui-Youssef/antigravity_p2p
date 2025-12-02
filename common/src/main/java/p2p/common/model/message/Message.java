@@ -3,6 +3,7 @@ package p2p.common.model.message;
 import p2p.common.model.MessageTopic;
 import p2p.common.vectorclock.VectorClock;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.Objects;
 
@@ -10,6 +11,7 @@ import java.util.Objects;
  * Abstract base class for all P2P messages.
  */
 public abstract class Message implements Serializable {
+    @Serial
     private static final long serialVersionUID = 3L;
 
     protected final String messageId;

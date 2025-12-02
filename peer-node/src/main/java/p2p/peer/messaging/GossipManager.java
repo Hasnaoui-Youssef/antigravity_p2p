@@ -86,10 +86,10 @@ public class GossipManager {
         long TIMEOUT_MS = 7000; // 7 seconds - longer than suspicion threshold
 
         for (Group group : groupManager.getGroups()) {
-            String groupId = group.getGroupId();
+            String groupId = group.groupId();
 
             // Skip if we're the leader
-            if (group.getLeaderId().equals(localUser.getUserId())) {
+            if (group.leader().userId().equals(localUser.userId())) {
                 continue;
             }
 
@@ -97,7 +97,7 @@ public class GossipManager {
             if (now - lastSeen > TIMEOUT_MS) {
                 // Leader timeout detected
                 if (failureCallback != null && failureTriggered.add(groupId)) {
-                    System.out.println("[Gossip] Local timeout detected for group " + group.getName());
+                    System.out.println("[Gossip] Local timeout detected for group " + group.name());
                     failureCallback.onLeaderSuspected(groupId);
                 }
             }
@@ -126,30 +126,30 @@ public class GossipManager {
             List<Group> groups = groupManager.getGroups();
             for (Group group : groups) {
                 // Select random member to gossip with
-                List<String> members = new ArrayList<>(group.getMembers().stream()
-                        .map(User::getUserId)
-                        .filter(id -> !id.equals(localUser.getUserId()))
+                List<String> members = new ArrayList<>(group.members().stream()
+                        .map(User::userId)
+                        .filter(id -> !id.equals(localUser.userId()))
                         .collect(Collectors.toList()));
 
                 if (members.isEmpty())
                     continue;
 
                 String targetId = members.get(random.nextInt(members.size()));
-                User target = group.getMembers().stream()
-                        .filter(u -> u.getUserId().equals(targetId))
+                User target = group.members().stream()
+                        .filter(u -> u.userId().equals(targetId))
                         .findFirst()
                         .orElseThrow();
 
                 // Build leader liveness map ONLY for groups both we and the target share
                 // (i.e., only the current group being gossiped about)
                 Map<String, Long> leaderLiveness = new HashMap<>();
-                leaderLiveness.put(group.getGroupId(), getLeaderLastSeen(group.getGroupId()));
+                leaderLiveness.put(group.groupId(), getLeaderLastSeen(group.groupId()));
 
                 // Create gossip message with leader liveness piggyback
                 GossipMessage gossip = GossipMessage.create(
                         localUser,
-                        group.getGroupId(),
-                        groupManager.getLatestClock(group.getGroupId()),
+                        group.groupId(),
+                        groupManager.getLatestClock(group.groupId()),
                         leaderLiveness);
 
                 sendGossipMessage(target, gossip);
@@ -161,7 +161,7 @@ public class GossipManager {
 
     private void sendGossipMessage(User target, GossipMessage gossip) {
         try {
-            Registry registry = LocateRegistry.getRegistry(target.getIpAddress(), target.getRmiPort());
+            Registry registry = LocateRegistry.getRegistry(target.ipAddress(), target.rmiPort());
             PeerService peerService = (PeerService) registry.lookup("PeerService");
             peerService.receiveMessage(gossip);
         } catch (Exception e) {
@@ -205,11 +205,11 @@ public class GossipManager {
      * For small groups (<=4 members), also triggers on local timeout alone.
      */
     private void processLeaderLiveness(GossipMessage message, Group group) {
-        String groupId = group.getGroupId();
+        String groupId = group.groupId();
         String senderId = message.getSenderId();
 
         // Skip if we are the leader
-        if (group.getLeaderId().equals(localUser.getUserId())) {
+        if (group.leader().userId().equals(localUser.userId())) {
             return;
         }
 
@@ -254,7 +254,7 @@ public class GossipManager {
             // suspicion
             // OR just our own suspicion if enough time has passed
             // For larger groups, require majority
-            int totalMembers = group.getMembers().size() + 1; // members + leader
+            int totalMembers = group.members().size() + 1; // members + leader
             boolean shouldTrigger;
 
             if (totalMembers <= 4) {

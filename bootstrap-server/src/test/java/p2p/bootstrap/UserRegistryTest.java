@@ -36,7 +36,7 @@ class UserRegistryTest {
     void testAddUser() {
         registry.addUser(alice);
         
-        User retrieved = registry.getUser(alice.getUserId());
+        User retrieved = registry.getUser(alice.userId());
         assertNotNull(retrieved);
         assertEquals(alice, retrieved);
     }
@@ -45,9 +45,9 @@ class UserRegistryTest {
     @DisplayName("RemoveUser should unregister user")
     void testRemoveUser() {
         registry.addUser(alice);
-        registry.removeUser(alice.getUserId());
+        registry.removeUser(alice.userId());
         
-        assertNull(registry.getUser(alice.getUserId()));
+        assertNull(registry.getUser(alice.userId()));
     }
     
     @Test
@@ -56,10 +56,10 @@ class UserRegistryTest {
         registry.addUser(alice);
         
         Thread.sleep(100);
-        registry.updateHeartbeat(alice.getUserId());
+        registry.updateHeartbeat(alice.userId());
         
         // User should still exist
-        assertNotNull(registry.getUser(alice.getUserId()));
+        assertNotNull(registry.getUser(alice.userId()));
     }
     
     @Test
@@ -145,7 +145,7 @@ class UserRegistryTest {
         // For now, we'll just test that the cleanup thread exists
         
         registry.addUser(alice);
-        assertNotNull(registry.getUser(alice.getUserId()));
+        assertNotNull(registry.getUser(alice.userId()));
         
         // In production, after 30+ seconds with no heartbeat, user would be removed
         // But we won't wait that long in tests

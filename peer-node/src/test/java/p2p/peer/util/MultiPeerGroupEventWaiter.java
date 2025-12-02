@@ -34,7 +34,7 @@ public class MultiPeerGroupEventWaiter {
         this.latch = new CountDownLatch(peers.size());
 
         for (PeerController peer : peers) {
-            String userId = peer.getLocalUser().getUserId();
+            String userId = peer.getLocalUser().userId();
             peersMap.put(userId, peer);
 
             PeerEventListener listener = new PeerEventListener() {
@@ -122,14 +122,14 @@ public class MultiPeerGroupEventWaiter {
 
     public List<String> getSucceededPeers() {
         return succeededPeerIds.stream()
-                .map(id -> peersMap.get(id).getLocalUser().getUsername())
+                .map(id -> peersMap.get(id).getLocalUser().username())
                 .collect(Collectors.toList());
     }
 
     public List<String> getPendingPeers() {
         return peersMap.keySet().stream()
                 .filter(id -> !succeededPeerIds.contains(id))
-                .map(id -> peersMap.get(id).getLocalUser().getUsername())
+                .map(id -> peersMap.get(id).getLocalUser().username())
                 .collect(Collectors.toList());
     }
 }

@@ -59,10 +59,6 @@ public class LeaderElectionManager {
         gossipManager.setLeaderFailureCallback(this::initiateElectionForGroup);
     }
 
-    public void start() {
-        // No periodic heartbeat checking - we rely on gossip-based detection
-    }
-
     public void stop() {
         scheduler.shutdown();
         executor.shutdown();
@@ -84,7 +80,7 @@ public class LeaderElectionManager {
             Group group = groupManager.getGroup(groupId);
             if (group != null) {
                 // Leader is still alive - cancel the election
-                notifyLog("Leader activity detected for group " + group.getName() +
+                notifyLog("Leader activity detected for group " + group.name() +
                         " - cancelling election (epoch " + state.epoch + ")");
                 ongoingElections.remove(groupId);
 
@@ -107,13 +103,13 @@ public class LeaderElectionManager {
 
         // Check if group has fallen below minimum size
         // When leader fails, only non-leader members remain
-        int remainingMembers = group.getMembers().size(); // Excludes the failed leader
+        int remainingMembers = group.members().size(); // Excludes the failed leader
         if (remainingMembers <= 2) {
             // Need at least 3 members after selecting new leader (2 non-leader + 1 new
             // leader)
             // With only 2 remaining, we'd have 1 leader + 1 member = 2 total (below minimum
             // of 3)
-            notifyLog("Group " + group.getName() + " has only " +
+            notifyLog("Group " + group.name() + " has only " +
                     remainingMembers + " remaining members after leader failure. Auto-dissolving...");
             groupManager.dissolveGroup(groupId);
             if (gossipManager != null) {
@@ -129,11 +125,11 @@ public class LeaderElectionManager {
      * Initiate a new election for the group with deterministic candidate selection.
      */
     public void initiateElection(Group group) {
-        String groupId = group.getGroupId();
-        long newEpoch = group.getEpoch() + 1;
+        String groupId = group.groupId();
+        long newEpoch = group.epoch() + 1;
 
         // Check if we're the leader (shouldn't initiate election if we are)
-        if (group.getLeaderId().equals(localUser.getUserId())) {
+        if (group.leader().userId().equals(localUser.userId())) {
             notifyLog("We are the leader - not initiating election");
             return;
         }
@@ -149,33 +145,30 @@ public class LeaderElectionManager {
         // Use the highest user ID among all members (deterministic)
         String determinedCandidate = determineCandidateLexicographically(group);
 
-        notifyLog("Leader suspected for group " + group.getName() +
-                " (epoch " + newEpoch + "), deterministic candidate: " + determinedCandidate.substring(0, 8));
+        notifyLog("Leader suspected for group " + group.name() +
+                " (epoch " + newEpoch + "), deterministic candidate: " + determinedCandidate);
 
         // Only the determined candidate should propose
-        if (!determinedCandidate.equals(localUser.getUserId())) {
-            // We're not the candidate, just wait for proposal from determined candidate
-            notifyLog("Not the candidate (we are " + localUser.getUserId().substring(0, 8) +
-                    "), waiting for proposal");
+        if (!determinedCandidate.equals(localUser.userId())) {
             return;
         }
 
         // We are the determined candidate, initiate election
-        ElectionState state = new ElectionState(group, newEpoch, localUser.getUserId());
+        ElectionState state = new ElectionState(group, newEpoch, localUser.userId());
         ongoingElections.put(groupId, state);
 
-        notifyLog("Starting election for group " + group.getName() +
+        notifyLog("Starting election for group " + group.name() +
                 " (epoch " + newEpoch + ") as candidate");
 
         // Vote for ourselves
-        state.recordVote(localUser.getUserId(), localUser.getUserId());
+        state.recordVote(localUser.userId(), localUser.userId());
         votedEpochs.computeIfAbsent(groupId, k -> ConcurrentHashMap.newKeySet()).add(newEpoch);
 
         // Broadcast proposal
         ElectionMessage proposal = ElectionMessage.create(
-                localUser.getUserId(), groupId,
+                localUser.userId(), groupId,
                 ElectionMessage.ElectionType.PROPOSAL,
-                localUser.getUserId(), newEpoch,
+                localUser.userId(), newEpoch,
                 vectorClock.clone());
 
         broadcastToGroup(group, proposal);
@@ -189,14 +182,12 @@ public class LeaderElectionManager {
      * This ensures all nodes agree on who should propose.
      */
     private String determineCandidateLexicographically(Group group) {
-        List<String> allMemberIds = group.getMembers().stream().map(User::getUserId).collect(Collectors.toList());
+        List<String> allMemberIds = group.members().stream().map(User::userId).collect(Collectors.toList());
 
         // Do NOT add current leader - we are electing a replacement because they failed
 
         if (allMemberIds.isEmpty()) {
-            // Should not happen if we checked group size before
-            // I plan on throwing an error here.
-            return "";
+            throw new IllegalStateException("Cannot determine candidate : no members available");
         }
 
         // Sort lexicographically and pick the highest (last in sorted order)
@@ -218,7 +209,7 @@ public class LeaderElectionManager {
         // This allows non-friends to participate in election as long as they are in the
         // group
         String senderId = message.getSenderId();
-        if (!group.isMember(senderId) && !senderId.equals(group.getLeaderId())) {
+        if (!group.isMember(senderId) && !senderId.equals(group.leader().userId())) {
             notifyLog("Ignoring proposal from non-member: " + senderId);
             return;
         }
@@ -226,14 +217,14 @@ public class LeaderElectionManager {
         String groupId = message.getGroupId();
         long proposalEpoch = message.getEpoch();
 
-        notifyLog("Received proposal for group " + group.getName() +
+        notifyLog("Received proposal for group " + group.name() +
                 " (epoch " + proposalEpoch + ") from " + message.getSenderId() +
-                ", current epoch: " + group.getEpoch());
+                ", current epoch: " + group.epoch());
 
         // Reject stale proposals
-        if (proposalEpoch <= group.getEpoch()) {
+        if (proposalEpoch <= group.epoch()) {
             notifyLog("Rejecting stale proposal (epoch " + proposalEpoch +
-                    " <= current " + group.getEpoch() + ")");
+                    " <= current " + group.epoch() + ")");
             return;
         }
 
@@ -263,14 +254,14 @@ public class LeaderElectionManager {
         }
 
         // Vote for the candidate
-        state.recordVote(localUser.getUserId(), message.getCandidateId());
+        state.recordVote(localUser.userId(), message.getCandidateId());
 
         notifyLog("Voting for " + message.getCandidateId() +
                 " in epoch " + proposalEpoch);
 
         // Send vote back to proposer
         ElectionMessage vote = ElectionMessage.create(
-                localUser.getUserId(), groupId,
+                localUser.userId(), groupId,
                 ElectionMessage.ElectionType.VOTE,
                 message.getCandidateId(), proposalEpoch,
                 vectorClock.clone());
@@ -290,7 +281,7 @@ public class LeaderElectionManager {
         }
 
         // Only the candidate should collect votes
-        if (!state.candidateId.equals(localUser.getUserId())) {
+        if (!state.candidateId.equals(localUser.userId())) {
             notifyLog("Ignoring vote - not the candidate");
             return;
         }
@@ -322,11 +313,11 @@ public class LeaderElectionManager {
         }
 
         // Reject stale results
-        if (message.getEpoch() <= group.getEpoch()) {
+        if (message.getEpoch() <= group.epoch()) {
             return;
         }
 
-        Group updatedGroup = group.withNewLeader(message.getCandidateId(), message.getEpoch());
+        Group updatedGroup = group.withNewLeader(group.members().stream().filter((user) -> user.userId().equals(message.getCandidateId())).findFirst().orElseThrow(), message.getEpoch());
         groupManager.updateGroup(updatedGroup);
 
         ongoingElections.remove(message.getGroupId());
@@ -334,7 +325,7 @@ public class LeaderElectionManager {
         // Record leader activity for gossip
         recordLeaderActivity(message.getGroupId());
 
-        notifyLog("New leader elected for group " + group.getName() +
+        notifyLog("New leader elected for group " + group.name() +
                 " - " + message.getCandidateId() + " (epoch " + message.getEpoch() + ")");
 
         notifyLeaderElected(message.getGroupId(), message.getCandidateId(), message.getEpoch());
@@ -355,22 +346,23 @@ public class LeaderElectionManager {
         }
 
         // Only the candidate should finalize
-        if (!state.candidateId.equals(localUser.getUserId())) {
+        if (!state.candidateId.equals(localUser.userId())) {
             return;
         }
 
         // Check if we have quorum
         if (!state.hasQuorum()) {
-            notifyLog("Failed to achieve quorum for group " + group.getName());
+            notifyLog("Failed to achieve quorum for group " + group.name());
             ongoingElections.remove(groupId);
             return;
         }
 
         // Determine winner (should be the candidate since we have quorum)
         String winner = state.getWinner();
+        User winnerUser = group.members().stream().filter((user) -> user.userId().equals(winner)).findFirst().orElseThrow();
 
         // Update group with new leader
-        Group updatedGroup = group.withNewLeader(winner, state.epoch);
+        Group updatedGroup = group.withNewLeader(winnerUser, state.epoch);
         groupManager.updateGroup(updatedGroup);
 
         // Record leader activity for gossip
@@ -378,7 +370,7 @@ public class LeaderElectionManager {
 
         // Broadcast result
         ElectionMessage result = ElectionMessage.create(
-                localUser.getUserId(), groupId,
+                localUser.userId(), groupId,
                 ElectionMessage.ElectionType.RESULT,
                 winner, state.epoch,
                 vectorClock.clone());
@@ -387,7 +379,7 @@ public class LeaderElectionManager {
 
         ongoingElections.remove(groupId);
 
-        notifyLog("Election complete for group " + group.getName() +
+        notifyLog("Election complete for group " + group.name() +
                 " - new leader: " + winner + " (epoch " + state.epoch + ") with " +
                 state.getVoteCount() + " votes");
 
@@ -398,8 +390,8 @@ public class LeaderElectionManager {
      * Send message to a specific user.
      */
     private void sendMessageToUser(String userId, ElectionMessage message, Group group) {
-        User target = group.getMembers().stream()
-                .filter(u -> u.getUserId().equals(userId))
+        User target = group.members().stream()
+                .filter(u -> u.userId().equals(userId))
                 .findFirst()
                 .orElse(null);
 
@@ -410,18 +402,18 @@ public class LeaderElectionManager {
         }
 
         notifyLog("Sending " + message.getElectionType() + " to " +
-                target.getUsername() + " at " + target.getIpAddress() + ":" + target.getRmiPort());
+                target.username() + " at " + target.ipAddress() + ":" + target.rmiPort());
 
         executor.submit(() -> {
             try {
-                Registry registry = LocateRegistry.getRegistry(target.getIpAddress(), target.getRmiPort());
+                Registry registry = LocateRegistry.getRegistry(target.ipAddress(), target.rmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
                 peerService.receiveMessage(message);
                 notifyLog("Successfully sent " + message.getElectionType() +
-                        " to " + target.getUsername());
+                        " to " + target.username());
             } catch (Exception e) {
                 notifyError("Failed to send " + message.getElectionType() +
-                        " to " + target.getUsername(), e);
+                        " to " + target.username(), e);
             }
         });
     }
@@ -430,31 +422,31 @@ public class LeaderElectionManager {
      * Broadcast message to all group members (including leader).
      */
     private void broadcastToGroup(Group group, ElectionMessage message) {
-        Set<User> allMembers = new HashSet<>(group.getMembers());
+        Set<User> allMembers = new HashSet<>(group.members());
 
         notifyLog("Broadcasting to " + allMembers.size() + " members");
 
         for (User member : allMembers) {
-            if (member.getUserId().equals(localUser.getUserId())) {
+            if (member.userId().equals(localUser.userId())) {
                 continue;
             }
 
-            notifyLog("Sending to " + member.getUsername() +
-                    " at " + member.getIpAddress() + ":" + member.getRmiPort());
+            notifyLog("Sending to " + member.username() +
+                    " at " + member.ipAddress() + ":" + member.rmiPort());
 
             executor.submit(() -> {
                 int maxRetries = 3;
                 for (int i = 0; i < maxRetries; i++) {
                     try {
-                        Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
+                        Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
                         PeerService peerService = (PeerService) registry.lookup("PeerService");
                         peerService.receiveMessage(message);
-                        notifyLog("Successfully sent to " + member.getUsername());
+                        notifyLog("Successfully sent to " + member.username());
                         return; // Success
                     } catch (Exception e) {
                         if (i == maxRetries - 1) {
                             notifyError(
-                                    "Failed to send to " + member.getUsername() + " after " + maxRetries + " attempts",
+                                    "Failed to send to " + member.username() + " after " + maxRetries + " attempts",
                                     e);
                         } else {
                             try {
@@ -509,7 +501,7 @@ public class LeaderElectionManager {
         boolean hasQuorum() {
             // Election happens when leader fails, so we should NOT count the leader
             // Only count members (excluding the failed leader)
-            int activeMembers = group.getMembers().size(); // Members only, no leader
+            int activeMembers = group.members().size(); // Members only, no leader
             int quorum = (activeMembers / 2) + 1;
 
             // Count votes for our candidate

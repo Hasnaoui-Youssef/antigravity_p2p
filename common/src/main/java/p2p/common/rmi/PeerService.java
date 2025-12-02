@@ -33,11 +33,4 @@ public interface PeerService extends Remote {
      * @return true if peer is responsive
      */
     boolean ping() throws RemoteException;
-
-    /**
-     * Receive a finalized group after accepting an invitation.
-     * 
-     * @param group The finalized group to add
-     */
-    void addFinalizedGroup(Group group) throws RemoteException;
 }

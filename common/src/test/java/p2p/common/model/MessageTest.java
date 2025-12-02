@@ -20,7 +20,7 @@ class MessageTest {
     void setUp() {
         sender = User.create("Alice", "192.168.1.1", 5001);
         clock = new VectorClock();
-        clock.increment(sender.getUserId());
+        clock.increment(sender.userId());
     }
 
     @Test
@@ -39,8 +39,8 @@ class MessageTest {
     void testCreateSenderInfo() {
         ChatMessage msg = ChatMessage.createDirect(sender, "receiver-id", "Test message", clock);
 
-        assertEquals(sender.getUserId(), msg.getSenderId());
-        assertEquals(sender.getUsername(), msg.getSenderUsername());
+        assertEquals(sender.userId(), msg.getSenderId());
+        assertEquals(sender.username(), msg.getSenderUsername());
         assertEquals("receiver-id", msg.getTargetId());
         assertEquals("Test message", msg.getContent());
         assertEquals(ChatMessage.ChatSubtopic.DIRECT, msg.getSubtopic());
@@ -52,11 +52,12 @@ class MessageTest {
         ChatMessage msg = ChatMessage.createDirect(sender, "receiver-id", "Test", clock);
 
         VectorClock msgClock = msg.getVectorClock();
-        clock.increment(sender.getUserId());
+        clock.increment(sender.userId());
 
         // Original clock changed, message clock should not
-        assertEquals(2, clock.getTime(sender.getUserId()));
-        assertEquals(1, msgClock.getTime(sender.getUserId()));
+        assertEquals(2, clock.getTime(sender.userId()));
+        assert msgClock != null;
+        assertEquals(1, msgClock.getTime(sender.userId()));
     }
 
     @Test
@@ -73,11 +74,11 @@ class MessageTest {
     @Test
     @DisplayName("Equals should compare by message ID")
     void testEquals() {
-        ChatMessage msg1 = new ChatMessage("msg123", sender.getUserId(), sender.getUsername(),
+        ChatMessage msg1 = new ChatMessage("msg123", sender.userId(), sender.username(),
                 "receiver", "content1", 1000, ChatMessage.ChatSubtopic.DIRECT, clock);
-        ChatMessage msg2 = new ChatMessage("msg123", sender.getUserId(), sender.getUsername(),
+        ChatMessage msg2 = new ChatMessage("msg123", sender.userId(), sender.username(),
                 "receiver", "content2", 2000, ChatMessage.ChatSubtopic.DIRECT, clock); // Different content but same ID
-        ChatMessage msg3 = new ChatMessage("msg456", sender.getUserId(), sender.getUsername(),
+        ChatMessage msg3 = new ChatMessage("msg456", sender.userId(), sender.username(),
                 "receiver", "content1", 1000, ChatMessage.ChatSubtopic.DIRECT, clock);
 
         assertEquals(msg1, msg2);
@@ -90,7 +91,7 @@ class MessageTest {
         ChatMessage msg = ChatMessage.createDirect(sender, "receiver-id", "Hello!", clock);
         String str = msg.toString();
 
-        assertTrue(str.contains(sender.getUsername()));
+        assertTrue(str.contains(sender.username()));
         assertTrue(str.contains("Hello!"));
     }
 }

@@ -46,27 +46,27 @@ public class MessageHandler {
      * Send a message to a friend.
      */
     public void sendMessage(User recipient, String content) throws Exception {
-        if (!friendManager.isFriend(recipient.getUserId())) {
-            notifyLog("Cannot send to " + recipient.getUsername() + " - not friends");
+        if (!friendManager.isFriend(recipient.userId())) {
+            notifyLog("Cannot send to " + recipient.username() + " - not friends");
             return;
         }
 
         // Increment vector clock
         synchronized (vectorClock) {
-            vectorClock.increment(localUser.getUserId());
+            vectorClock.increment(localUser.userId());
         }
 
         // Create message using the new ChatMessage type
-        ChatMessage message = ChatMessage.createDirect(localUser, recipient.getUserId(), content, vectorClock.clone());
+        ChatMessage message = ChatMessage.createDirect(localUser, recipient.userId(), content, vectorClock.clone());
 
         // Send via RMI
-        Registry registry = LocateRegistry.getRegistry(recipient.getIpAddress(), recipient.getRmiPort());
+        Registry registry = LocateRegistry.getRegistry(recipient.ipAddress(), recipient.rmiPort());
         PeerService peerService = (PeerService) registry.lookup("PeerService");
         peerService.receiveMessage(message);
 
         // Print confirmation
         String time = TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimestamp()));
-        notifyLog("[" + time + "] You -> " + recipient.getUsername() + ": " + content);
+        notifyLog("[" + time + "] You -> " + recipient.username() + ": " + content);
     }
 
     /**

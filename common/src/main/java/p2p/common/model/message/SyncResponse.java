@@ -3,6 +3,7 @@ package p2p.common.model.message;
 import p2p.common.model.MessageTopic;
 import p2p.common.vectorclock.VectorClock;
 
+import java.io.Serial;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -13,6 +14,7 @@ import java.util.UUID;
  * Response containing missing messages.
  */
 public final class SyncResponse extends Message {
+    @Serial
     private static final long serialVersionUID = 1L;
 
     private final String requestId;

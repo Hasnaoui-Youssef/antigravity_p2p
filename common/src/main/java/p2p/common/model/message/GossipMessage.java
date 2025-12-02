@@ -4,6 +4,7 @@ import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
 import p2p.common.vectorclock.VectorClock;
 
+import java.io.Serial;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
@@ -16,6 +17,7 @@ import java.util.UUID;
  * Includes leader liveness information for gossip-based failure detection.
  */
 public final class GossipMessage extends Message {
+    @Serial
     private static final long serialVersionUID = 1L;
 
     private final String groupId;
@@ -35,8 +37,8 @@ public final class GossipMessage extends Message {
     public static GossipMessage create(User sender, String groupId, VectorClock clock) {
         return new GossipMessage(
                 UUID.randomUUID().toString(),
-                sender.getUserId(),
-                sender.getUsername(),
+                sender.userId(),
+                sender.username(),
                 groupId,
                 Instant.now().toEpochMilli(),
                 clock,
@@ -47,8 +49,8 @@ public final class GossipMessage extends Message {
             Map<String, Long> leaderLastSeen) {
         return new GossipMessage(
                 UUID.randomUUID().toString(),
-                sender.getUserId(),
-                sender.getUsername(),
+                sender.userId(),
+                sender.username(),
                 groupId,
                 Instant.now().toEpochMilli(),
                 clock,

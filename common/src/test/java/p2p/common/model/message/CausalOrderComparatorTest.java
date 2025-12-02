@@ -187,7 +187,7 @@ class CausalOrderComparatorTest {
         return new ChatMessage(
                 messageId,
                 senderId,
-                sender.getUsername(),
+                sender.username(),
                 "receiver",
                 content,
                 System.currentTimeMillis(),

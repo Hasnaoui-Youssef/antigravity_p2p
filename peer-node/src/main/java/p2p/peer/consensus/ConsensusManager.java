@@ -106,16 +106,16 @@ public class ConsensusManager {
      * - In this case, we query that single member
      */
     private List<User> selectQuorum(Group group) {
-        List<User> members = group.getMembers().stream()
-                .filter(u -> !u.getUserId().equals(localUser.getUserId()))
-                .collect(Collectors.toList());
+        List<User> members = group.members().stream()
+                .filter(u -> !u.userId().equals(localUser.userId()))
+                .toList();
 
         if (members.isEmpty())
             return Collections.emptyList();
 
         // Total = members (excluding leader) + 1 for leader
         // Note: group.getMembers() excludes leader by design
-        int totalGroupSize = group.getMembers().size() + 1;
+        int totalGroupSize = group.members().size() + 1;
         int quorumSize;
 
         if (totalGroupSize <= 3) {
@@ -126,7 +126,7 @@ public class ConsensusManager {
         }
 
         // Return up to quorumSize members, but never more than available
-        int limit = Math.min(members.size(), Math.max(1, quorumSize));
+        int limit = Math.min(members.size(), quorumSize);
         return members.stream()
                 .limit(limit)
                 .collect(Collectors.toList());
@@ -138,7 +138,7 @@ public class ConsensusManager {
     private List<List<ChatMessage>> queryQuorum(String groupId, VectorClock lastKnownState, List<User> quorum) {
         List<CompletableFuture<List<ChatMessage>>> futures = quorum.stream()
                 .map(member -> querySingleMember(groupId, lastKnownState, member))
-                .collect(Collectors.toList());
+                .toList();
 
         // Wait for all responses (with timeout)
         try {
@@ -192,12 +192,12 @@ public class ConsensusManager {
                 try {
                     SyncRequest request = new SyncRequest(
                             requestId,
-                            localUser.getUserId(),
+                            localUser.userId(),
                             System.currentTimeMillis(),
                             groupId,
                             lastKnownState);
 
-                    Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
+                    Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
                     PeerService peerService = (PeerService) registry.lookup("PeerService");
 
                     peerService.receiveMessage(request);
@@ -206,7 +206,7 @@ public class ConsensusManager {
                 } catch (Exception e) {
                     if (i == maxRetries - 1) {
                         System.err
-                                .println("[Consensus] Failed to query " + member.getUsername() + " after " + maxRetries
+                                .println("[Consensus] Failed to query " + member.username() + " after " + maxRetries
                                         + " attempts: " + e.getMessage());
                         pendingRequests.remove(requestId);
                         future.complete(Collections.emptyList());
@@ -285,10 +285,10 @@ public class ConsensusManager {
 
     private void sendSyncResponse(User requester, String requestId, String groupId, List<ChatMessage> messages) {
         try {
-            SyncResponse response = SyncResponse.create(localUser.getUserId(), requestId, groupId, messages,
+            SyncResponse response = SyncResponse.create(localUser.userId(), requestId, groupId, messages,
                     vectorClock.clone());
 
-            Registry registry = LocateRegistry.getRegistry(requester.getIpAddress(), requester.getRmiPort());
+            Registry registry = LocateRegistry.getRegistry(requester.ipAddress(), requester.rmiPort());
             PeerService peerService = (PeerService) registry.lookup("PeerService");
             peerService.receiveMessage(response);
         } catch (Exception e) {

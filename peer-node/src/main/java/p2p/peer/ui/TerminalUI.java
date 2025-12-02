@@ -109,7 +109,7 @@ public class TerminalUI {
     private void commandLogin() throws Exception {
         controller.start();
 
-        System.out.println("[Bootstrap] Connected and registered as " + controller.getLocalUser().getUsername());
+        System.out.println("[Bootstrap] Connected and registered as " + controller.getLocalUser().username());
     }
 
     private void commandList() {
@@ -122,7 +122,7 @@ public class TerminalUI {
             System.out.println("  (none)");
         } else {
             for (User friend : friends) {
-                System.out.println("   " + friend.getUsername());
+                System.out.println("   " + friend.username());
             }
         }
 
@@ -131,8 +131,8 @@ public class TerminalUI {
             System.out.println("  (none)");
         } else {
             for (Group group : groups) {
-                String leader = group.getLeaderId().equals(controller.getLocalUser().getUserId()) ? " (Leader)" : "";
-                System.out.println("  # " + group.getName() + leader + " - " + group.getMembers().size() + " members");
+                String leader = group.leader().userId().equals(controller.getLocalUser().userId()) ? " (Leader)" : "";
+                System.out.println("  # " + group.name() + leader + " - " + group.members().size() + " members");
             }
         }
 
@@ -141,7 +141,7 @@ public class TerminalUI {
             System.out.println("  (none)");
         } else {
             for (User user : pending) {
-                System.out.println("  ? " + user.getUsername() + " (use /accept " + user.getUsername() + ")");
+                System.out.println("  ? " + user.username() + " (use /accept " + user.username() + ")");
             }
         }
         System.out.println();
@@ -159,9 +159,9 @@ public class TerminalUI {
             System.out.println("[Search] No users found matching '" + username + "'");
         } else {
             for (User user : results) {
-                if (!user.getUserId().equals(controller.getLocalUser().getUserId())) {
+                if (!user.userId().equals(controller.getLocalUser().userId())) {
                     System.out.println(
-                            "  - " + user.getUsername() + " @ " + user.getIpAddress() + ":" + user.getRmiPort());
+                            "  - " + user.username() + " @ " + user.ipAddress() + ":" + user.rmiPort());
                 }
             }
         }
@@ -195,28 +195,28 @@ public class TerminalUI {
 
         // Try to find friend
         User friend = controller.getFriends().stream()
-                .filter(u -> u.getUsername().equalsIgnoreCase(target))
+                .filter(u -> u.username().equalsIgnoreCase(target))
                 .findFirst()
                 .orElse(null);
 
         if (friend != null) {
-            activeConversation = ConversationContext.directMessage(friend.getUserId(), friend.getUsername());
+            activeConversation = ConversationContext.directMessage(friend.userId(), friend.username());
             state = UIState.CONVERSATION_VIEW;
-            System.out.println("[Chat] Opened conversation with " + friend.getUsername());
+            System.out.println("[Chat] Opened conversation with " + friend.username());
             System.out.println("Type /back to return to main menu");
             return;
         }
 
         // Try to find group
         Group group = controller.getGroups().stream()
-                .filter(g -> g.getName().equalsIgnoreCase(target))
+                .filter(g -> g.name().equalsIgnoreCase(target))
                 .findFirst()
                 .orElse(null);
 
         if (group != null) {
-            activeConversation = ConversationContext.groupChat(group.getGroupId(), group.getName());
+            activeConversation = ConversationContext.groupChat(group.groupId(), group.name());
             state = UIState.CONVERSATION_VIEW;
-            System.out.println("[Chat] Opened group " + group.getName());
+            System.out.println("[Chat] Opened group " + group.name());
             System.out.println("Type /back to return to main menu");
             return;
         }
@@ -235,7 +235,7 @@ public class TerminalUI {
         String[] friendNames = parts[1].split("\\s+");
 
         Group group = controller.createGroup(groupName, List.of(friendNames));
-        System.out.println("[Group] Created group '" + groupName + "' with " + group.getMembers().size() + " members");
+        System.out.println("[Group] Created group '" + groupName + "' with " + group.members().size() + " members");
     }
 
     // ========== Conversation Commands ==========
@@ -253,12 +253,12 @@ public class TerminalUI {
 
         if (activeConversation.getType() == ConversationContext.Type.DIRECT) {
             User friend = controller.getFriends().stream()
-                    .filter(u -> u.getUserId().equals(activeConversation.getId()))
+                    .filter(u -> u.userId().equals(activeConversation.getId()))
                     .findFirst()
                     .orElse(null);
 
             if (friend != null) {
-                controller.sendMessage(friend.getUsername(), content);
+                controller.sendMessage(friend.username(), content);
             }
         } else if (activeConversation.getType() == ConversationContext.Type.GROUP) {
             controller.sendGroupMessage(activeConversation.getId(), content);
@@ -274,8 +274,8 @@ public class TerminalUI {
 
     private void printWelcome() {
         System.out.println("\n=== Antigravity P2P - Peer Node ===");
-        System.out.println("Logged in as: " + controller.getLocalUser().getUsername());
-        System.out.println("User ID: " + controller.getLocalUser().getUserId());
+        System.out.println("Logged in as: " + controller.getLocalUser().username());
+        System.out.println("User ID: " + controller.getLocalUser().userId());
         System.out.println("\nType /help for available commands\n");
     }
 

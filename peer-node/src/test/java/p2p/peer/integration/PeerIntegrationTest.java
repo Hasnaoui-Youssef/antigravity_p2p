@@ -82,7 +82,7 @@ class PeerIntegrationTest {
 
         alice.start();
         assertTrue(alice.isStarted());
-        assertEquals("Alice", alice.getLocalUser().getUsername());
+        assertEquals("Alice", alice.getLocalUser().username());
 
         alice.stop();
         assertFalse(alice.isStarted());
@@ -107,12 +107,12 @@ class PeerIntegrationTest {
             // Alice searches for Bob
             var users = alice.searchUsers("Bob");
             assertEquals(1, users.size());
-            assertEquals("Bob", users.get(0).getUsername());
+            assertEquals("Bob", users.get(0).username());
 
             // Bob searches for Alice
             users = bob.searchUsers("Alice");
             assertEquals(1, users.size());
-            assertEquals("Alice", users.get(0).getUsername());
+            assertEquals("Alice", users.get(0).username());
 
             System.out.println("[Test]  Peer discovery works");
         } finally {
@@ -140,15 +140,15 @@ class PeerIntegrationTest {
             // Bob should have pending request
             var bobPending = bob.getPendingRequests();
             assertEquals(1, bobPending.size());
-            assertEquals("Alice", bobPending.get(0).getUsername());
+            assertEquals("Alice", bobPending.get(0).username());
 
             // Bob accepts
             bob.acceptFriendRequest("Alice");
             Thread.sleep(500);
 
             // Both should be friends now
-            assertTrue(bob.getFriends().stream().anyMatch(u -> u.getUsername().equals("Alice")));
-            assertTrue(alice.getFriends().stream().anyMatch(u -> u.getUsername().equals("Bob")));
+            assertTrue(bob.getFriends().stream().anyMatch(u -> u.username().equals("Alice")));
+            assertTrue(alice.getFriends().stream().anyMatch(u -> u.username().equals("Bob")));
 
             System.out.println("[Test]  Friend request flow works");
         } finally {
@@ -169,8 +169,8 @@ class PeerIntegrationTest {
             bob.start();
             Thread.sleep(1000);
 
-            String aliceId = alice.getLocalUser().getUserId();
-            String bobId = bob.getLocalUser().getUserId();
+            String aliceId = alice.getLocalUser().userId();
+            String bobId = bob.getLocalUser().userId();
 
             // Initial state: each peer only knows their own clock
             assertEquals(1, alice.getVectorClock().getTime(aliceId));
@@ -378,7 +378,7 @@ class PeerIntegrationTest {
             Thread.sleep(1000);
 
             // Alice and Charlie are NOT friends
-            assertFalse(alice.getFriends().stream().anyMatch(u -> u.getUsername().equals("Charlie")));
+            assertFalse(alice.getFriends().stream().anyMatch(u -> u.username().equals("Charlie")));
 
             // Alice tries to send message to Charlie (should fail)
             Exception exception = assertThrows(IllegalArgumentException.class, () -> {

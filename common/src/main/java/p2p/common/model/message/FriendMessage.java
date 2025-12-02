@@ -4,11 +4,13 @@ import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
 import p2p.common.vectorclock.VectorClock;
 
+import java.io.Serial;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
 public final class FriendMessage extends Message {
+    @Serial
     private static final long serialVersionUID = 1L;
 
     private final User sender;
@@ -31,7 +33,7 @@ public final class FriendMessage extends Message {
     public static FriendMessage create(User sender, SubTopic messageType, VectorClock vectorClock) {
         return new FriendMessage(
                 UUID.randomUUID().toString(),
-                sender.getUserId(),
+                sender.userId(),
                 Instant.now().toEpochMilli(),
                 sender,
                 messageType,
@@ -48,7 +50,7 @@ public final class FriendMessage extends Message {
 
     @Override
     public String toString() {
-        return String.format("FriendMessage{id='%s', sender='%s', messageType='%s'}", messageId, sender.getUsername(),
+        return String.format("FriendMessage{id='%s', sender='%s', messageType='%s'}", messageId, sender.username(),
                 friendMessageType);
     }
 

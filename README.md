@@ -41,7 +41,6 @@ docker compose up -d bootstrap alice bob
 docker compose exec alice sh
 ```
 
-See [DOCKER_TESTING.md](DOCKER_TESTING.md) for detailed Docker testing guide.
 
 ## Testing
 
@@ -50,9 +49,6 @@ See [DOCKER_TESTING.md](DOCKER_TESTING.md) for detailed Docker testing guide.
 ./gradlew :common:test :bootstrap-server:test 
 ./gradlew :peer-node:test --tests '*Test' --tests '!*IntegrationTest'
 ```
-
-### Integration Tests
-Use Docker Compose for proper RMI isolation. See [DOCKER_TESTING.md](DOCKER_TESTING.md).
 
 ## Terminal Commands
 

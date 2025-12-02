@@ -1,9 +1,11 @@
 package p2p.common.model.message;
 
+import p2p.common.model.GroupInvitationSubtopic;
 import p2p.common.model.MessageTopic;
 import p2p.common.model.User;
 import p2p.common.vectorclock.VectorClock;
 
+import java.io.Serial;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -15,6 +17,7 @@ import java.util.UUID;
  * Uses the subtopic pattern to distinguish between message types.
  */
 public final class GroupInvitationMessage extends Message {
+    @Serial
     private static final long serialVersionUID = 1L;
 
     private final GroupInvitationSubtopic subtopic;

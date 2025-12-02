@@ -15,16 +15,14 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class FriendManagerTest {
 
-    private User localUser;
     private User remoteUser;
-    private VectorClock vectorClock;
     private FriendManager friendManager;
 
     @BeforeEach
     void setUp() {
-        localUser = User.create("Alice", "192.168.1.1", 5001);
+        User localUser = User.create("Alice", "192.168.1.1", 5001);
         remoteUser = User.create("Bob", "192.168.1.2", 5002);
-        vectorClock = new VectorClock();
+        VectorClock vectorClock = new VectorClock();
         friendManager = new FriendManager(localUser, vectorClock);
     }
 
@@ -63,7 +61,7 @@ class FriendManagerTest {
     void testHandleFriendAcceptance() {
         friendManager.handleFriendAcceptance(remoteUser);
 
-        assertTrue(friendManager.isFriend(remoteUser.getUserId()));
+        assertTrue(friendManager.isFriend(remoteUser.userId()));
         List<User> friends = friendManager.getFriends();
         assertEquals(1, friends.size());
         assertTrue(friends.contains(remoteUser));
@@ -72,10 +70,10 @@ class FriendManagerTest {
     @Test
     @DisplayName("IsFriend should check friend status")
     void testIsFriend() {
-        assertFalse(friendManager.isFriend(remoteUser.getUserId()));
+        assertFalse(friendManager.isFriend(remoteUser.userId()));
 
         friendManager.handleFriendAcceptance(remoteUser);
-        assertTrue(friendManager.isFriend(remoteUser.getUserId()));
+        assertTrue(friendManager.isFriend(remoteUser.userId()));
     }
 
     @Test

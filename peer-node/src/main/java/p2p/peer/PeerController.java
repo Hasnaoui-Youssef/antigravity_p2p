@@ -57,7 +57,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
 
     /**
      * Creates a new peer controller.
-     * 
+     *
      * @param username      Peer username
      * @param rmiPort       RMI port for this peer
      * @param bootstrapHost Bootstrap server hostname
@@ -72,7 +72,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         this.localUser = User.create(username, localIp, rmiPort);
 
         this.vectorClock = new VectorClock();
-        this.vectorClock.increment(localUser.getUserId());
+        this.vectorClock.increment(localUser.userId());
 
         this.friendManager = new FriendManager(localUser, vectorClock);
         this.groupManager = new GroupManager(localUser, vectorClock, friendManager);
@@ -123,13 +123,13 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         }
 
         // Check username uniqueness
-        List<User> existingUsers = bootstrapService.searchByUsername(localUser.getUsername());
+        List<User> existingUsers = bootstrapService.searchByUsername(localUser.username());
         if (!existingUsers.isEmpty()) {
             boolean collision = existingUsers.stream()
-                    .anyMatch(u -> !u.getUserId().equals(localUser.getUserId()));
+                    .anyMatch(u -> !u.userId().equals(localUser.userId()));
 
             if (collision) {
-                throw new IllegalStateException("Username '" + localUser.getUsername() + "' is already taken.");
+                throw new IllegalStateException("Username '" + localUser.username() + "' is already taken.");
             }
         }
 
@@ -137,10 +137,9 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         heartbeatThread.start();
         bootstrapService.register(localUser);
         gossipManager.start();
-        electionManager.start();
 
         started = true;
-        notifyLog("Peer started: " + localUser.getUsername());
+        notifyLog("Peer started: " + localUser.username());
     }
 
     /**
@@ -158,7 +157,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
 
         if (bootstrapService != null) {
             try {
-                bootstrapService.unregister(localUser.getUserId());
+                bootstrapService.unregister(localUser.userId());
             } catch (Exception e) {
                 // Ignore
             }
@@ -180,7 +179,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         if (users.isEmpty()) {
             throw new IllegalArgumentException("User not found: " + username);
         }
-        friendManager.sendFriendRequest(users.get(0));
+        friendManager.sendFriendRequest(users.getFirst());
     }
 
     public void acceptFriendRequest(String username) throws Exception {
@@ -215,7 +214,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         // Deduplicate usernames
         List<String> uniqueUsernames = friendUsernames.stream()
                 .distinct()
-                .collect(java.util.stream.Collectors.toList());
+                .toList();
 
         List<User> friends = new ArrayList<>();
         for (String username : uniqueUsernames) {
@@ -225,6 +224,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             }
             friends.add(friend);
         }
+        friends.add(localUser);
         return groupManager.createGroup(name, friends);
     }
 
@@ -256,35 +256,35 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         }
 
         ChatMessage message = ChatMessage.createGroup(localUser, groupId, content, vectorClock);
-        vectorClock.increment(localUser.getUserId());
+        vectorClock.increment(localUser.userId());
 
         // Store message locally first
         groupManager.addMessage(groupId, message);
 
         // Broadcast to ALL group participants (members + leader)
-        for (User member : group.getMembers()) {
-            if (member.getUserId().equals(localUser.getUserId())) {
+        for (User member : group.members()) {
+            if (member.userId().equals(localUser.userId())) {
                 continue; // Skip self
             }
             try {
-                Registry registry = LocateRegistry.getRegistry(member.getIpAddress(), member.getRmiPort());
+                Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
                 peerService.receiveMessage(message);
             } catch (Exception e) {
-                notifyError("Failed to send to " + member.getUsername(), e);
+                notifyError("Failed to send to " + member.username(), e);
             }
         }
 
         // Also send to leader if we're not the leader
-        if (!group.getLeaderId().equals(localUser.getUserId())) {
+        if (!group.leader().userId().equals(localUser.userId())) {
             try {
                 User leader = friendManager.getFriends().stream()
-                        .filter(f -> f.getUserId().equals(group.getLeaderId()))
+                        .filter(f -> f.userId().equals(group.leader().userId()))
                         .findFirst()
                         .orElse(null);
 
                 if (leader != null) {
-                    Registry registry = LocateRegistry.getRegistry(leader.getIpAddress(), leader.getRmiPort());
+                    Registry registry = LocateRegistry.getRegistry(leader.ipAddress(), leader.rmiPort());
                     PeerService peerService = (PeerService) registry.lookup("PeerService");
                     peerService.receiveMessage(message);
                 }
@@ -314,8 +314,10 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             case FRIEND_MESSAGE -> handleFriendshipMessage((FriendMessage) message);
             case SYNC_RESPONSE -> handleSyncResponse((SyncResponse) message);
             case ELECTION -> handleElectionMessage((ElectionMessage) message);
+            case GROUP_EVENT -> handleGroupEvent((GroupEventMessage) message);
         }
     }
+
 
     @Override
     public void updateVectorClock(VectorClock clock) throws RemoteException {
@@ -329,12 +331,15 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         return true;
     }
 
-    @Override
-    public void addFinalizedGroup(Group group) throws RemoteException {
-        groupManager.addFinalizedGroup(group);
-    }
-
     // ========== Message Handling Helpers ==========
+
+    private void handleGroupEvent(GroupEventMessage message) {
+        switch (message.getEvent()) {
+            case CREATED -> groupManager.addFinalizedGroup(message.getGroup());
+            case USER_JOINED -> groupManager.addUser(message.getGroup().groupId(), message.getAffectedUser());
+            case DISSOLVED, USER_LEFT -> {}
+        }
+    }
 
     private void handleChatMessage(ChatMessage message) {
         synchronized (vectorClock) {
@@ -351,7 +356,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             groupManager.addMessage(message.getGroupId(), message);
 
             Group group = groupManager.getGroup(message.getGroupId());
-            if (group != null && message.getSenderId().equals(group.getLeaderId())) {
+            if (group != null && message.getSenderId().equals(group.leader().userId())) {
                 electionManager.recordLeaderActivity(message.getGroupId());
             }
         }
@@ -405,8 +410,8 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             return;
         }
 
-        User requester = group.getMembers().stream()
-                .filter(u -> u.getUserId().equals(message.getSenderId()))
+        User requester = group.members().stream()
+                .filter(u -> u.userId().equals(message.getSenderId()))
                 .findFirst()
                 .orElse(null);
 
@@ -514,7 +519,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         synchronized (electionWaitLock) {
             while (System.currentTimeMillis() < endTime) {
                 Group group = groupManager.getGroup(groupId);
-                if (group != null && !group.getLeaderId().equals(oldLeaderId)) {
+                if (group != null && !group.leader().userId().equals(oldLeaderId)) {
                     return true;
                 }
 

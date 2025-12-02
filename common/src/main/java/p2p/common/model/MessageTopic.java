@@ -7,5 +7,6 @@ public enum MessageTopic {
     SYNC_RESPONSE,
     ELECTION,
     GROUP_INVITATION,  // Unified group invitation messages (request, accept, reject)
-    FRIEND_MESSAGE
+    FRIEND_MESSAGE,
+    GROUP_EVENT
 }
