@@ -246,10 +246,15 @@ public class GroupManager {
                         .orElse(null);
 
                 if (newMember != null) {
-                    // Broadcast the group update to everyone (including the new member)
-                    broadcastUserJoin(group, newMember);
-                    broadcastGroupFinalization(group.withAddedMember(newMember), newMember);
-                    addUser(group.groupId(), newMember);
+                    // Update group state
+                    Group updatedGroup = group.withAddedMember(newMember);
+                    
+                    // Broadcast the group update to everyone (Active + Pending)
+                    broadcastUserJoin(updatedGroup, newMember);
+                    broadcastGroupFinalization(updatedGroup, updatedGroup.allMembers()); // Update everyone with new state
+                    
+                    // Update local state
+                    updateGroup(updatedGroup);
 
                     notifyLog("Late joiner " + newMember.username() + " added to group " + group.name());
                 }
@@ -261,12 +266,17 @@ public class GroupManager {
                         .orElse(null);
 
                 if (newMember != null) {
-                    // Broadcast the group update to everyone (including the new member)
-                    broadcastUserJoin(group, newMember);
-                    broadcastGroupFinalization(group.withAddedMember(newMember), newMember);
-                    addUser(group.groupId(), newMember);
+                    // Update group state
+                    Group updatedGroup = group.withRejectedMember(newMember);
+                    
+                    // Broadcast the rejection to everyone (Active + Pending)
+                    broadcastUserRejection(updatedGroup, newMember);
+                    broadcastGroupFinalization(updatedGroup, updatedGroup.allMembers()); // Update everyone with new state
+                    
+                    // Update local state
+                    updateGroup(updatedGroup);
 
-                    notifyLog("Late joiner " + newMember.username() + " added to group " + group.name());
+                    notifyLog("Late rejection from " + newMember.username() + " for group " + group.name());
                 }
             }
             default -> {}
@@ -277,24 +287,43 @@ public class GroupManager {
      * Finalize the group - add to active groups.
      */
     private void finalizeGroup(String groupId, PendingGroup pending) {
-        // Build set of accepted User objects (excluding creator - they're the leader)
+        // Build sets of members
         Set<User> finalMembers = new HashSet<>();
+        Set<User> pendingMembers = new HashSet<>();
+        Set<User> rejectedMembers = new HashSet<>();
 
-        // Add accepted members using the stored User objects
         Map<String, User> potentialMembers = pending.getPotentialMembers();
+        
+        // Accepted -> Members
         for (String acceptedId : pending.getAcceptedMemberIds()) {
-            User acceptedUser = potentialMembers.get(acceptedId);
-            if (acceptedUser != null) {
-                finalMembers.add(acceptedUser);
+            // Exclude creator (leader) from members set
+            if (acceptedId.equals(pending.getCreator().userId())) {
+                continue;
             }
+            User user = potentialMembers.get(acceptedId);
+            if (user != null) finalMembers.add(user);
+        }
+        
+        // Rejected -> Rejected
+        for (String rejectedId : pending.getRejectedMemberIds()) {
+            User user = potentialMembers.get(rejectedId);
+            if (user != null) rejectedMembers.add(user);
+        }
+        
+        // Non-responders -> Pending
+        for (String pendingId : pending.getNonResponders()) {
+            User user = potentialMembers.get(pendingId);
+            if (user != null) pendingMembers.add(user);
         }
 
-        // Create the finalized group with creator and accepted members
+        // Create the finalized group
         Group finalizedGroup = new Group(
                 groupId,
                 pending.getGroupName(),
                 pending.getCreator(),
                 finalMembers,
+                pendingMembers,
+                rejectedMembers,
                 0);
 
         // Add to active groups
@@ -310,26 +339,33 @@ public class GroupManager {
         }
 
         notifyLog("Group '" + pending.getGroupName() + "' finalized with " +
-                (finalMembers.size() + 1) + " total members");
+                (finalMembers.size() + 1) + " active members, " + pendingMembers.size() + " pending");
 
         notifyGroupEvent(groupId, GroupEvent.CREATED, "Group finalized");
 
-        // Broadcast group creation notification to all accepted members
-        broadcastGroupFinalization(finalizedGroup, new ArrayList<>(finalMembers));
+        // Broadcast group creation notification to ALL members (Active + Pending)
+        // This ensures pending users know the group exists and who the leader is
+        broadcastGroupFinalization(finalizedGroup, finalizedGroup.allMembers());
     }
 
     /**
-     * Broadcast group finalization to accepted members - adds group to their
-     * GroupManager.
+     * Broadcast group finalization to members.
      */
-    private void broadcastGroupFinalization(Group group, List<User> members) {
+    private void broadcastGroupFinalization(Group group, Set<User> members) {
         for (User member : members) {
             broadcastGroupFinalization(group, member);
         }
     }
+    
+    // Overload for List (backward compatibility if needed, but we switched to Set in Group)
+    private void broadcastGroupFinalization(Group group, Collection<User> members) {
+        for (User member : members) {
+            broadcastGroupFinalization(group, member);
+        }
+    }
+
     /**
-     * Broadcast group finalization to accepted members - adds group to their
-     * GroupManager.
+     * Broadcast group finalization to a specific member.
      */
     private void broadcastGroupFinalization(Group group, User member) {
         if (member.userId().equals(localUser.userId())) {
@@ -345,12 +381,12 @@ public class GroupManager {
             notifyError("Failed to send group to " + member.username(), e);
         }
     }
+
     /**
-     * Broadcast group finalization to accepted members - adds group to their
-     * GroupManager.
+     * Broadcast user join event to ALL members (Active + Pending).
      */
     private void broadcastUserJoin(Group group, User newUser) {
-        for (User member : group.members()) {
+        for (User member : group.allMembers()) {
             if (member.userId().equals(localUser.userId())) {
                 continue; // Skip self
             }
@@ -366,12 +402,12 @@ public class GroupManager {
             }
         }
     }
+
     /**
-     * Broadcast group finalization to accepted members - adds group to their
-     * GroupManager.
+     * Broadcast user rejection/left event to ALL members (Active + Pending).
      */
     private void broadcastUserRejection(Group group, User newUser) {
-        for (User member : group.members()) {
+        for (User member : group.allMembers()) {
             if (member.userId().equals(localUser.userId())) {
                 continue; // Skip self
             }
@@ -381,9 +417,9 @@ public class GroupManager {
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
                 GroupEventMessage newUserGroupMessage = GroupEventMessage.userLeftMessage(localUser.userId(), group, vectorClock, newUser);
                 peerService.receiveMessage(newUserGroupMessage);
-                notifyLog("Sent group user join event to " + member.username());
+                notifyLog("Sent group user rejection event to " + member.username());
             } catch (Exception e) {
-                notifyError("Failed to send group user join event to " + member.username(), e);
+                notifyError("Failed to send group user rejection event to " + member.username(), e);
             }
         }
     }
@@ -411,7 +447,7 @@ public class GroupManager {
     public void addFinalizedGroup(Group group) {
 
         groups.put(group.groupId(), group);
-        groupMessages.put(group.groupId(), Collections.synchronizedSet(new LinkedHashSet<>()));
+        groupMessages.computeIfAbsent(group.groupId(), k -> Collections.synchronizedSet(new LinkedHashSet<>()));
 
         // Record initial leader activity
         if (electionManager != null) {

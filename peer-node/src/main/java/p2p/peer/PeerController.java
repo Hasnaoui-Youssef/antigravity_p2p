@@ -261,8 +261,8 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         // Store message locally first
         groupManager.addMessage(groupId, message);
 
-        // Broadcast to ALL group participants (members + leader)
-        for (User member : group.members()) {
+        // Broadcast to ALL active participants (members + leader)
+        for (User member : group.activeMembers()) {
             if (member.userId().equals(localUser.userId())) {
                 continue; // Skip self
             }
@@ -272,24 +272,6 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
                 peerService.receiveMessage(message);
             } catch (Exception e) {
                 notifyError("Failed to send to " + member.username(), e);
-            }
-        }
-
-        // Also send to leader if we're not the leader
-        if (!group.leader().userId().equals(localUser.userId())) {
-            try {
-                User leader = friendManager.getFriends().stream()
-                        .filter(f -> f.userId().equals(group.leader().userId()))
-                        .findFirst()
-                        .orElse(null);
-
-                if (leader != null) {
-                    Registry registry = LocateRegistry.getRegistry(leader.ipAddress(), leader.rmiPort());
-                    PeerService peerService = (PeerService) registry.lookup("PeerService");
-                    peerService.receiveMessage(message);
-                }
-            } catch (Exception e) {
-                notifyError("Failed to send to leader", e);
             }
         }
     }
@@ -410,7 +392,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             return;
         }
 
-        User requester = group.members().stream()
+        User requester = group.activeMembers().stream()
                 .filter(u -> u.userId().equals(message.getSenderId()))
                 .findFirst()
                 .orElse(null);

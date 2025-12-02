@@ -80,7 +80,7 @@ public class PendingGroup {
      * Check if the group can be finalized (min 3 members total including creator).
      */
     public boolean canFinalize() {
-        return acceptedMemberIds.size() > 3;
+        return acceptedMemberIds.size() >= 3;
     }
 
     /**

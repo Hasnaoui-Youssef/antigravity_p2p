@@ -106,7 +106,7 @@ public class ConsensusManager {
      * - In this case, we query that single member
      */
     private List<User> selectQuorum(Group group) {
-        List<User> members = group.members().stream()
+        List<User> members = group.activeMembers().stream()
                 .filter(u -> !u.userId().equals(localUser.userId()))
                 .toList();
 
