@@ -9,7 +9,7 @@ public class PendingGroup {
     private final String groupId;
     private final String groupName;
     private final User creator;
-    private final Map<String, User> potentialMembers; // userId -> User (all invited, excluding creator)
+    private final Map<String, User> potentialMembers; // userId -> User (all invited, including creator)
     private final Set<String> acceptedMemberIds; // Those who accepted
     private final Set<String> rejectedMemberIds; // Those who rejected
 

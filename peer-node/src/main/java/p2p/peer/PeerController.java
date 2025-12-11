@@ -45,7 +45,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
     private final HeartbeatSender heartbeatSender;
     private final Thread heartbeatThread;
 
-    private BootstrapService bootstrapService;
+    private final BootstrapService bootstrapService;
     private volatile boolean started = false;
 
     private final List<PeerEventListener> listeners = new CopyOnWriteArrayList<>();
@@ -145,7 +145,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
     /**
      * Stops the peer and cleans up resources.
      */
-    public synchronized void stop() throws Exception {
+    public synchronized void stop() {
         if (!started) {
             return;
         }
@@ -210,7 +210,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         return localUser;
     }
 
-    public Group createGroup(String name, List<String> friendUsernames) throws Exception {
+    public Group createGroup(String name, List<String> friendUsernames) throws IllegalArgumentException {
         // Deduplicate usernames
         List<String> uniqueUsernames = friendUsernames.stream()
                 .distinct()
@@ -249,7 +249,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         return groupManager.getPendingInvitations();
     }
 
-    public void sendGroupMessage(String groupId, String content) throws Exception {
+    public void sendGroupMessage(String groupId, String content) {
         Group group = groupManager.getGroup(groupId);
         if (group == null) {
             throw new IllegalArgumentException("Not a member of group: " + groupId);
@@ -298,19 +298,6 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             case ELECTION -> handleElectionMessage((ElectionMessage) message);
             case GROUP_EVENT -> handleGroupEvent((GroupEventMessage) message);
         }
-    }
-
-
-    @Override
-    public void updateVectorClock(VectorClock clock) throws RemoteException {
-        synchronized (vectorClock) {
-            vectorClock.update(clock);
-        }
-    }
-
-    @Override
-    public boolean ping() throws RemoteException {
-        return true;
     }
 
     // ========== Message Handling Helpers ==========
@@ -481,34 +468,6 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
                     long waitTime = endTime - System.currentTimeMillis();
                     if (waitTime > 0) {
                         groupWaitLock.wait(waitTime);
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Waits for election to complete and a new leader to be elected.
-     */
-    public boolean waitForNewLeader(String groupId, String oldLeaderId, long timeoutMs) {
-        long startTime = System.currentTimeMillis();
-        long endTime = startTime + timeoutMs;
-
-        synchronized (electionWaitLock) {
-            while (System.currentTimeMillis() < endTime) {
-                Group group = groupManager.getGroup(groupId);
-                if (group != null && !group.leader().userId().equals(oldLeaderId)) {
-                    return true;
-                }
-
-                try {
-                    long waitTime = endTime - System.currentTimeMillis();
-                    if (waitTime > 0) {
-                        electionWaitLock.wait(waitTime);
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

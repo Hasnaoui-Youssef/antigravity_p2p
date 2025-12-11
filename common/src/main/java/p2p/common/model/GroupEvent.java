@@ -5,4 +5,5 @@ public enum GroupEvent {
     DISSOLVED,
     USER_JOINED,
     USER_LEFT,
+    USER_REJECTED,
 }

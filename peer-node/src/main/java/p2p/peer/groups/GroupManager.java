@@ -290,7 +290,7 @@ public class GroupManager {
         // Build sets of members
         Set<User> finalMembers = new HashSet<>();
         Set<User> pendingMembers = new HashSet<>();
-        Set<User> rejectedMembers = new HashSet<>();
+        Set<String> rejectedMembers = Set.copyOf(pending.getRejectedMemberIds());
 
         Map<String, User> potentialMembers = pending.getPotentialMembers();
         
@@ -302,12 +302,6 @@ public class GroupManager {
             }
             User user = potentialMembers.get(acceptedId);
             if (user != null) finalMembers.add(user);
-        }
-        
-        // Rejected -> Rejected
-        for (String rejectedId : pending.getRejectedMemberIds()) {
-            User user = potentialMembers.get(rejectedId);
-            if (user != null) rejectedMembers.add(user);
         }
         
         // Non-responders -> Pending
@@ -352,13 +346,6 @@ public class GroupManager {
      * Broadcast group finalization to members.
      */
     private void broadcastGroupFinalization(Group group, Set<User> members) {
-        for (User member : members) {
-            broadcastGroupFinalization(group, member);
-        }
-    }
-    
-    // Overload for List (backward compatibility if needed, but we switched to Set in Group)
-    private void broadcastGroupFinalization(Group group, Collection<User> members) {
         for (User member : members) {
             broadcastGroupFinalization(group, member);
         }

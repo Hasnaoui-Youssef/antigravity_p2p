@@ -19,7 +19,7 @@ public class ConsensusManager {
 
     private final User localUser;
     private final GroupManager groupManager;
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors());
 
     // Map of requestId -> Future to track pending sync requests
     private final Map<String, CompletableFuture<List<ChatMessage>>> pendingRequests = new ConcurrentHashMap<>();
@@ -171,58 +171,48 @@ public class ConsensusManager {
         CompletableFuture<List<ChatMessage>> future = new CompletableFuture<>();
         String requestId = UUID.randomUUID().toString();
 
-        // Store future to be completed when response arrives
         pendingRequests.put(requestId, future);
 
-        // Schedule timeout cleanup
-        executor.submit(() -> {
-            try {
-                Thread.sleep(5000);
+        ScheduledFuture<?> timeoutTask = executor.schedule(() -> {
                 if (pendingRequests.remove(requestId) != null) {
                     future.complete(Collections.emptyList());
                 }
-            } catch (InterruptedException e) {
-                // Ignore
-            }
-        });
+        }, 5, TimeUnit.SECONDS);
 
-        executor.submit(() -> {
-            int maxRetries = 3;
-            for (int i = 0; i < maxRetries; i++) {
-                try {
-                    SyncRequest request = new SyncRequest(
-                            requestId,
-                            localUser.userId(),
-                            System.currentTimeMillis(),
-                            groupId,
-                            lastKnownState);
-
-                    Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
-                    PeerService peerService = (PeerService) registry.lookup("PeerService");
-
-                    peerService.receiveMessage(request);
-                    return; // Success
-
-                } catch (Exception e) {
-                    if (i == maxRetries - 1) {
-                        System.err
-                                .println("[Consensus] Failed to query " + member.username() + " after " + maxRetries
-                                        + " attempts: " + e.getMessage());
-                        pendingRequests.remove(requestId);
-                        future.complete(Collections.emptyList());
-                    } else {
-                        try {
-                            Thread.sleep(500); // Backoff
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-
+        userQueryRetry(requestId, groupId, lastKnownState, member, 0, 3, timeoutTask, future);
         return future;
+    }
+
+
+    private void userQueryRetry(String requestId, String groupId, VectorClock lastKnownState, User member,
+                                int currAttempt, int maxAttempt,
+                                ScheduledFuture<?> timeoutTask, CompletableFuture<List<ChatMessage>> future){
+        if(currAttempt >= maxAttempt || future.isDone()) return;
+        try {
+            SyncRequest request = new SyncRequest(
+                    requestId,
+                    localUser.userId(),
+                    System.currentTimeMillis(),
+                    groupId,
+                    lastKnownState);
+
+            Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
+            PeerService peerService = (PeerService) registry.lookup("PeerService");
+
+            peerService.receiveMessage(request);
+
+        } catch (Exception e) {
+            if (currAttempt == maxAttempt - 1) {
+               if(pendingRequests.remove(requestId) != null){
+                   timeoutTask.cancel(false);
+                   future.complete(Collections.emptyList());
+               }
+            } else {
+                long backoff = 500L * (1L << currAttempt);
+                executor.schedule(() -> userQueryRetry(requestId, groupId, lastKnownState, member, currAttempt, maxAttempt, timeoutTask, future), backoff, TimeUnit.MILLISECONDS);
+            }
+        }
+
     }
 
     /**
@@ -233,13 +223,10 @@ public class ConsensusManager {
         Set<ChatMessage> messageMap = new HashSet<>();
 
         for (List<ChatMessage> response : responses) {
-            for (ChatMessage msg : response) {
-                // Keep the message if we don't have it, or if it's newer
-                messageMap.add(msg);
-            }
+            messageMap.addAll(response);
         }
 
-        // Sort by timestamp for ordered application
+        // Sort by vector clock for ordered application
         return messageMap.stream()
                 .sorted(new CausalOrderComparator())
                 .collect(Collectors.toList());

@@ -26,7 +26,6 @@ public record User(String userId, String username, String ipAddress, int rmiPort
 
     @Override
     public boolean equals(Object o) {
-        if (o == null) return false;
         if (o == this) return true;
         if (!(o instanceof User user)) return false;
         return userId.equals(user.userId);

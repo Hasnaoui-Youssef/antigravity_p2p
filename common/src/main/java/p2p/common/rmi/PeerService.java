@@ -20,17 +20,4 @@ public interface PeerService extends Remote {
      */
     void receiveMessage(Message message) throws RemoteException;
 
-    /**
-     * Update vector clock (for synchronization purposes).
-     * 
-     * @param clock The updated vector clock
-     */
-    void updateVectorClock(VectorClock clock) throws RemoteException;
-
-    /**
-     * Ping to check if peer is alive.
-     * 
-     * @return true if peer is responsive
-     */
-    boolean ping() throws RemoteException;
 }

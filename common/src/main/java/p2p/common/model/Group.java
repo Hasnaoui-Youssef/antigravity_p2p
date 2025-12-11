@@ -11,12 +11,12 @@ import java.util.*;
  * @param members Members excluding the leader
  * @param epoch   For leader election
  */
-public record Group(String groupId, String name, User leader, Set<User> members, Set<User> pendingMembers, Set<User> rejectedMembers,
+public record Group(String groupId, String name, User leader, Set<User> members, Set<User> pendingMembers, Set<String> rejectedMembers,
                     long epoch) implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    public Group(String groupId, String name, User leader, Set<User> members, Set<User> pendingMembers, Set<User> rejectedMembers, long epoch) {
+    public Group(String groupId, String name, User leader, Set<User> members, Set<User> pendingMembers, Set<String> rejectedMembers, long epoch) {
         this.groupId = Objects.requireNonNull(groupId);
         this.name = Objects.requireNonNull(name);
         this.leader = Objects.requireNonNull(leader);
@@ -49,7 +49,20 @@ public record Group(String groupId, String name, User leader, Set<User> members,
 
     public boolean isMember(String userId) {
         // Check if user is leader OR in members set
-        return leader.userId().equals(userId) || members.stream().anyMatch(u -> u.userId().equals(userId));
+        return members.stream().anyMatch(u -> u.userId().equals(userId));
+    }
+
+    public boolean isMember(User user) {
+        // Check if user is leader OR in members set
+        return members.stream().anyMatch(u -> u.userId().equals(user.userId()));
+    }
+
+    public boolean isLeader(String userId) {
+        return leader.userId().equals(userId);
+    }
+
+    public boolean isLeader(User user) {
+        return leader.userId().equals(user.userId());
     }
 
     public boolean isPending(String userId) {
@@ -57,48 +70,45 @@ public record Group(String groupId, String name, User leader, Set<User> members,
     }
 
     public boolean isRejected(String userId) {
-        return rejectedMembers.stream().anyMatch(u -> u.userId().equals(userId));
+        return rejectedMembers.contains(userId);
     }
 
     public Group withNewLeader(User newLeader, long newEpoch) {
-        return new Group(groupId, name, newLeader, members, pendingMembers, rejectedMembers, newEpoch);
+        Set<User> newMembers = new HashSet<>(members);
+        newMembers.remove(newLeader);
+        return new Group(groupId, name, newLeader, newMembers, pendingMembers, rejectedMembers, newEpoch);
     }
 
     public Group withAddedMember(User newMember) {
-        // Don't add if already a member or if they're the leader
-        if (isMember(newMember.userId()) || newMember.userId().equals(leader.userId())) {
+        if (isMember(newMember) || isLeader(newMember)) {
             return this;
         }
         Set<User> newMembers = new HashSet<>(members);
-        newMembers.add(newMember);
-        
         Set<User> newPending = new HashSet<>(pendingMembers);
+
+        newMembers.add(newMember);
         newPending.remove(newMember);
 
         return new Group(groupId, name, leader, newMembers, newPending, rejectedMembers, epoch);
     }
 
     public Group withRejectedMember(User rejectedMember) {
-        if (isMember(rejectedMember.userId()) || rejectedMember.userId().equals(leader.userId())) {
+        if (isMember(rejectedMember) || isLeader(rejectedMember)) {
             return this;
         }
-        Set<User> newRejected = new HashSet<>(rejectedMembers);
-        newRejected.add(rejectedMember);
-
+        Set<String> newRejected = new HashSet<>(rejectedMembers);
         Set<User> newPending = new HashSet<>(pendingMembers);
+
+        newRejected.add(rejectedMember.userId());
         newPending.remove(rejectedMember);
 
         return new Group(groupId, name, leader, members, newPending, newRejected, epoch);
     }
 
     public Group withRemovedMember(User memberToRemove) {
-        // Don't remove if not a member and not the leader (leader removal is handled by election)
-        if (!isMember(memberToRemove.userId()) && !memberToRemove.userId().equals(leader.userId())) {
-            return this;
-        }
-        Set<User> newMembers = new HashSet<>(members);
-        newMembers.remove(memberToRemove);
-        return new Group(groupId, name, leader, newMembers, pendingMembers, rejectedMembers, epoch);
+        //TODO : This is meant for when a user willingly leaves the group after joining.
+        // We should start an election automatically if he is the leader (not to be done here), and simply remove him from the active members, but not add him to the rejected members.
+        return this;
     }
 
     /**

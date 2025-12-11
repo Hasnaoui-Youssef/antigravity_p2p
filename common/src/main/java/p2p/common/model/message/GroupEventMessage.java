@@ -77,6 +77,18 @@ public class GroupEventMessage extends Message{
                 Objects.requireNonNull(user)
         );
     }
+    public static GroupEventMessage userRejectedMessage(String senderId,
+                                                    Group group, VectorClock vectorClock, User user) {
+        return new GroupEventMessage(
+                UUID.randomUUID().toString(),
+                senderId,
+                Instant.now().toEpochMilli(),
+                GroupEvent.USER_REJECTED,
+                group,
+                vectorClock,
+                Objects.requireNonNull(user)
+        );
+    }
 
     public Group getGroup() {
         return group;
@@ -99,6 +111,8 @@ public class GroupEventMessage extends Message{
             case USER_JOINED -> String.format("GroupEventMessage{id='%s', type=USER_JOINED, sender='%s', group='%s'}",
                     messageId, senderId, group.name());
             case USER_LEFT -> String.format("GroupEventMessage{id='%s', type=USER_LEFT, sender='%s', group='%s'}",
+                    messageId, senderId, group.name());
+            case USER_REJECTED -> String.format("GroupEventMessage{id='%s', type=USER_REJECTED, sender='%s', group='%s'}",
                     messageId, senderId, group.name());
         };
 
