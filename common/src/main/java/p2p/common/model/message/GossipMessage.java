@@ -26,7 +26,7 @@ public final class GossipMessage extends Message {
     private final Map<String, Long> leaderLastSeen;
 
     public GossipMessage(String messageId, String senderId, String senderUsername, String groupId, long timestamp,
-            VectorClock vectorClock, Map<String, Long> leaderLastSeen) {
+                         VectorClock vectorClock, Map<String, Long> leaderLastSeen) {
         super(messageId, senderId, timestamp, MessageTopic.GOSSIP, vectorClock);
         this.senderUsername = Objects.requireNonNull(senderUsername);
         this.groupId = Objects.requireNonNull(groupId);
@@ -46,7 +46,7 @@ public final class GossipMessage extends Message {
     }
 
     public static GossipMessage create(User sender, String groupId, VectorClock clock,
-            Map<String, Long> leaderLastSeen) {
+                                       Map<String, Long> leaderLastSeen) {
         return new GossipMessage(
                 UUID.randomUUID().toString(),
                 sender.userId(),

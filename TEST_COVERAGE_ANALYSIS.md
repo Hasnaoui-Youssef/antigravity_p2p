@@ -46,10 +46,12 @@ PeerIntegrationTest includes tests that the old ones didn't have:
 ## Recommendation
 
 ### Delete:
+
 - ✅ `FriendRequestIntegrationTest.java` - Fully covered
 - ⚠️ `MessagingIntegrationTest.java` - **Consider keeping 2 tests OR porting them**
 
 ### Tests to Port (Optional):
+
 1. **Message causality chain** - `testMessageCausality()` tested M1 → M2 → M3 causality
 2. **Cannot message non-friend** - `testCannotMessageNonFriend()` validation
 3. **Multiple messages order** - `testMultipleMessagesOrder()` with 5 sequential messages
@@ -59,18 +61,22 @@ PeerIntegrationTest includes tests that the old ones didn't have:
 ## Decision Options
 
 **Option A: Delete Both (Recommended)**
+
 - Clean slate, 95% coverage retained
 - Lost tests are edge cases that can be re-added if needed
 
 **Option B: Port Missing Tests**
+
 - Add 3 tests to `PeerIntegrationTest`:
-  - `testMessageCausalityChain()`
-  - `testCannotMessageNonFriend()`
-  - `testMultipleMessagesOrdering()`
+    - `testMessageCausalityChain()`
+    - `testCannotMessageNonFriend()`
+    - `testMultipleMessagesOrdering()`
 - 100% coverage, but more test maintenance
 
 **Option C: Keep MessagingIntegrationTest**
+
 - Keep the file but mark tests as `@Disabled`
 - Reference implementation for future
 
-**My Recommendation: Option A** - The missing tests are nice-to-have edge cases. The new tests cover the core functionality comprehensively.
+**My Recommendation: Option A** - The missing tests are nice-to-have edge cases. The new tests cover the core
+functionality comprehensively.

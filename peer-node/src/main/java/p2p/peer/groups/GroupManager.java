@@ -94,7 +94,8 @@ public class GroupManager {
                 vectorClock.clone());
 
         for (User member : potentialMembers) {
-            if(member.userId().equals(localUser.userId())) continue;
+            if (member.userId().equals(localUser.userId()))
+                continue;
             try {
                 sendInvitationToUser(member, invitation);
             } catch (Exception e) {
@@ -146,7 +147,8 @@ public class GroupManager {
             throw new IllegalArgumentException("No pending invitation for group: " + groupId);
         }
 
-        User creator = request.getPotentialMembers().stream().filter((user)->user.userId().equals(request.getSenderId())).findFirst().orElse(null);
+        User creator = request.getPotentialMembers().stream()
+                .filter((user) -> user.userId().equals(request.getSenderId())).findFirst().orElse(null);
 
         if (creator == null) {
             pendingInvitations.put(groupId, request);
@@ -220,39 +222,39 @@ public class GroupManager {
         if (response.isAccepted()) {
             pending.recordAcceptance(responderId);
             notifyLog("User " + responderId + " accepted invitation to group " + groupId);
-        } else {
-            pending.recordRejection(responderId);
-            notifyLog("User " + responderId + " rejected invitation to group " + groupId);
+            if (pending.canFinalize())
+                finalizeGroup(groupId, pending);
+            if (pending.isImpossible())
+                dissolveGroup(groupId, pending, "Cannot reach minimum group size due to rejections");
+            return;
         }
 
-        // Check if we can finalize (Leader + 2 accepted members = 3 total)
-        if (pending.canFinalize()) {
-            finalizeGroup(groupId, pending);
-        } else if (pending.isImpossible()) {
-            // Too many rejections, can never reach minimum size
+        pending.recordRejection(responderId);
+        notifyLog("User " + responderId + " rejected invitation to group " + groupId);
+        if (pending.isImpossible())
             dissolveGroup(groupId, pending, "Cannot reach minimum group size due to rejections");
-        }
     }
 
     /**
      * Handle a response that arrived after the group was already finalized.
      */
     private void handleLateResponse(Group group, GroupInvitationMessage response) {
-        switch(response.getSubtopic()) {
+        switch (response.getSubtopic()) {
             case ACCEPT -> {
-                User newMember = response.getPotentialMembers().stream()
+                User newMember = group.pendingMembers().stream()
                         .filter(u -> u.userId().equals(response.getSenderId()))
                         .findFirst()
-                        .orElse(null);
+                        .orElse(friendManager.getFriendById(response.getSenderId()));
 
                 if (newMember != null) {
                     // Update group state
                     Group updatedGroup = group.withAddedMember(newMember);
-                    
+
                     // Broadcast the group update to everyone (Active + Pending)
                     broadcastUserJoin(updatedGroup, newMember);
-                    broadcastGroupFinalization(updatedGroup, updatedGroup.allMembers()); // Update everyone with new state
-                    
+                    broadcastGroupFinalization(updatedGroup, updatedGroup.allMembers()); // Update everyone with new
+                    // state
+
                     // Update local state
                     updateGroup(updatedGroup);
 
@@ -260,26 +262,28 @@ public class GroupManager {
                 }
             }
             case REJECT -> {
-                User newMember = response.getPotentialMembers().stream()
+                User newMember = group.pendingMembers().stream()
                         .filter(u -> u.userId().equals(response.getSenderId()))
                         .findFirst()
-                        .orElse(null);
+                        .orElse(friendManager.getFriendById(response.getSenderId()));
 
                 if (newMember != null) {
                     // Update group state
                     Group updatedGroup = group.withRejectedMember(newMember);
-                    
+
                     // Broadcast the rejection to everyone (Active + Pending)
                     broadcastUserRejection(updatedGroup, newMember);
-                    broadcastGroupFinalization(updatedGroup, updatedGroup.allMembers()); // Update everyone with new state
-                    
+                    broadcastGroupFinalization(updatedGroup, updatedGroup.allMembers()); // Update everyone with new
+                    // state
+
                     // Update local state
                     updateGroup(updatedGroup);
 
                     notifyLog("Late rejection from " + newMember.username() + " for group " + group.name());
                 }
             }
-            default -> {}
+            default -> {
+            }
         }
     }
 
@@ -293,7 +297,7 @@ public class GroupManager {
         Set<String> rejectedMembers = Set.copyOf(pending.getRejectedMemberIds());
 
         Map<String, User> potentialMembers = pending.getPotentialMembers();
-        
+
         // Accepted -> Members
         for (String acceptedId : pending.getAcceptedMemberIds()) {
             // Exclude creator (leader) from members set
@@ -301,13 +305,15 @@ public class GroupManager {
                 continue;
             }
             User user = potentialMembers.get(acceptedId);
-            if (user != null) finalMembers.add(user);
+            if (user != null)
+                finalMembers.add(user);
         }
-        
+
         // Non-responders -> Pending
         for (String pendingId : pending.getNonResponders()) {
             User user = potentialMembers.get(pendingId);
-            if (user != null) pendingMembers.add(user);
+            if (user != null)
+                pendingMembers.add(user);
         }
 
         // Create the finalized group
@@ -361,7 +367,8 @@ public class GroupManager {
         try {
             Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
             PeerService peerService = (PeerService) registry.lookup("PeerService");
-            GroupEventMessage finalizedGroupMessage = GroupEventMessage.groupCreatedMessage(localUser.userId(), group, vectorClock);
+            GroupEventMessage finalizedGroupMessage = GroupEventMessage.groupCreatedMessage(localUser.userId(), group,
+                    vectorClock);
             peerService.receiveMessage(finalizedGroupMessage);
             notifyLog("Sent finalized group to " + member.username());
         } catch (Exception e) {
@@ -381,7 +388,8 @@ public class GroupManager {
             try {
                 Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
-                GroupEventMessage newUserGroupMessage = GroupEventMessage.userJoinedMessage(localUser.userId(), group, vectorClock, newUser);
+                GroupEventMessage newUserGroupMessage = GroupEventMessage.userJoinedMessage(localUser.userId(), group,
+                        vectorClock, newUser);
                 peerService.receiveMessage(newUserGroupMessage);
                 notifyLog("Sent group user join event to " + member.username());
             } catch (Exception e) {
@@ -391,7 +399,7 @@ public class GroupManager {
     }
 
     /**
-     * Broadcast user rejection/left event to ALL members (Active + Pending).
+     * Broadcast user rejection event to ALL members (Active + Pending).
      */
     private void broadcastUserRejection(Group group, User newUser) {
         for (User member : group.allMembers()) {
@@ -402,7 +410,8 @@ public class GroupManager {
             try {
                 Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
-                GroupEventMessage newUserGroupMessage = GroupEventMessage.userLeftMessage(localUser.userId(), group, vectorClock, newUser);
+                GroupEventMessage newUserGroupMessage = GroupEventMessage.userRejectedMessage(localUser.userId(), group,
+                        vectorClock, newUser);
                 peerService.receiveMessage(newUserGroupMessage);
                 notifyLog("Sent group user rejection event to " + member.username());
             } catch (Exception e) {
@@ -414,17 +423,121 @@ public class GroupManager {
     public void addUser(String groupId, User user) {
         groups.computeIfPresent(groupId, (id, group) -> group.withAddedMember(user));
         Group group = groups.get(groupId);
-        if (group == null) return;
+        if (group == null)
+            return;
         notifyLog("Updated group '" + group.name() + "' with " + (group.members().size() + 1) + " members");
         notifyGroupEvent(groupId, GroupEvent.USER_JOINED, user.username() + " joined " + group.name());
+    }
+
+    public void leaveGroup(String groupId) throws Exception {
+        Group group = groups.get(groupId);
+        if (group == null) {
+            throw new IllegalArgumentException("Not a member of group: " + groupId);
+        }
+
+        // 1. If we are the leader, we must hand over leadership first
+        if (isLeader(groupId)) {
+            // Determine successor
+            String successorId = electionManager.determineCandidateLexicographically(group);
+            User successor = group.members().stream()
+                    .filter(u -> u.userId().equals(successorId))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("Successor not found in members"));
+
+            long newEpoch = group.epoch() + 1;
+
+            // Broadcast new leader to everyone (including ourselves, processed locally)
+            // We do this manually here instead of triggering a full election
+            Group updatedGroup = group.withNewLeader(successor, newEpoch);
+
+            // Broadcast result
+            p2p.common.model.message.ElectionMessage result = p2p.common.model.message.ElectionMessage.create(
+                    localUser.userId(), groupId,
+                    p2p.common.model.message.ElectionMessage.ElectionType.RESULT,
+                    successorId, newEpoch,
+                    vectorClock.clone());
+
+            // We need to broadcast this effectively. We can use the existing
+            // electionManager helper if exposed?
+            // Or just manually iterate since GroupManager has access to members.
+            // Let's rely on standard broadcast logic.
+            for (User member : group.members()) { // Send to all current members
+                if (member.userId().equals(localUser.userId()))
+                    continue;
+                sendElectionMessage(member, result);
+            }
+
+            // Update local state immediately so subsequent leave broadcast comes from
+            // "non-leader"
+            updateGroup(updatedGroup);
+            group = updatedGroup; // Refresh local reference for the next step
+
+            notifyLog("Handed over leadership of group " + group.name() + " to " + successor.username());
+        }
+
+        // 2. Broadcast USER_LEFT event
+        // Now (or originally) we are just a member leaving.
+        // We broadcast to the specific group members.
+        // Note: The new leader (if we just handed over) will receive this and update
+        // the group.
+        broadcastUserLeft(group);
+
+        // 3. Remove locally
+        groups.remove(groupId);
+        groupMessages.remove(groupId);
+        notifyGroupEvent(groupId, GroupEvent.USER_LEFT, "You left the group");
+        notifyLog("Left group: " + group.name());
+    }
+
+    private void sendElectionMessage(User recipient, p2p.common.model.message.ElectionMessage message) {
+        try {
+            Registry registry = LocateRegistry.getRegistry(recipient.ipAddress(), recipient.rmiPort());
+            PeerService peerService = (PeerService) registry.lookup("PeerService");
+            peerService.receiveMessage(message);
+        } catch (Exception e) {
+            notifyError("Failed to send election handover to " + recipient.username(), e);
+        }
+    }
+
+    /**
+     * Broadcast user left event to ALL members.
+     */
+    private void broadcastUserLeft(Group group) {
+        for (User member : group.activeMembers()) { // activeMembers includes leader + members
+            if (member.userId().equals(localUser.userId())) {
+                continue; // Skip self
+            }
+
+            try {
+                Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
+                PeerService peerService = (PeerService) registry.lookup("PeerService");
+                GroupEventMessage userLeftMessage = GroupEventMessage.userLeftMessage(localUser.userId(), group,
+                        vectorClock, localUser);
+                peerService.receiveMessage(userLeftMessage);
+            } catch (Exception e) {
+                notifyError("Failed to send group user left event to " + member.username(), e);
+            }
+        }
     }
 
     public void removeUser(String groupId, User user) {
         groups.computeIfPresent(groupId, (id, group) -> group.withRemovedMember(user));
         Group group = groups.get(groupId);
-        if (group == null) return;
+        if (group == null)
+            return;
+
         notifyLog("Updated group '" + group.name() + "' with " + (group.members().size() + 1) + " members");
         notifyGroupEvent(groupId, GroupEvent.USER_LEFT, user.username() + " left " + group.name());
+
+        // Check for minimum size (Leader + 2 members = 3 total)
+        // group.members().size() returns non-leader members.
+        // So total size = group.members().size() + 1 (the leader).
+        // If total size < 3, dissolve.
+        // -> group.members().size() < 2
+        if (group.members().size() < 2) {
+            notifyLog("Group " + group.name() + " fell below minimum size after user leave. Dissolving.");
+            dissolveGroup(groupId);
+        }
     }
 
     /**
@@ -434,7 +547,8 @@ public class GroupManager {
     public void addFinalizedGroup(Group group) {
 
         groups.put(group.groupId(), group);
-        groupMessages.computeIfAbsent(group.groupId(), k -> Collections.synchronizedSet(new LinkedHashSet<>()));
+        groupMessages.computeIfAbsent(group.groupId(),
+                k -> new ConcurrentSkipListSet<>(new CausalOrderComparator()));
 
         // Record initial leader activity
         if (electionManager != null) {

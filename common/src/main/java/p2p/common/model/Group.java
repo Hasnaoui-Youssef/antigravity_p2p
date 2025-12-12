@@ -11,12 +11,14 @@ import java.util.*;
  * @param members Members excluding the leader
  * @param epoch   For leader election
  */
-public record Group(String groupId, String name, User leader, Set<User> members, Set<User> pendingMembers, Set<String> rejectedMembers,
+public record Group(String groupId, String name, User leader, Set<User> members, Set<User> pendingMembers,
+                    Set<String> rejectedMembers,
                     long epoch) implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    public Group(String groupId, String name, User leader, Set<User> members, Set<User> pendingMembers, Set<String> rejectedMembers, long epoch) {
+    public Group(String groupId, String name, User leader, Set<User> members, Set<User> pendingMembers,
+                 Set<String> rejectedMembers, long epoch) {
         this.groupId = Objects.requireNonNull(groupId);
         this.name = Objects.requireNonNull(name);
         this.leader = Objects.requireNonNull(leader);
@@ -106,9 +108,12 @@ public record Group(String groupId, String name, User leader, Set<User> members,
     }
 
     public Group withRemovedMember(User memberToRemove) {
-        //TODO : This is meant for when a user willingly leaves the group after joining.
-        // We should start an election automatically if he is the leader (not to be done here), and simply remove him from the active members, but not add him to the rejected members.
-        return this;
+        if (!isMember(memberToRemove)) {
+            return this;
+        }
+        Set<User> newMembers = new HashSet<>(members);
+        newMembers.remove(memberToRemove);
+        return new Group(groupId, name, leader, newMembers, pendingMembers, rejectedMembers, epoch);
     }
 
     /**

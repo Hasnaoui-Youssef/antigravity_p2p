@@ -7,7 +7,7 @@ import java.util.Comparator;
 /**
  * Comparator for ordering messages by their vector clocks with deterministic
  * ordering for concurrent events.
- * 
+ *
  * Ordering rules:
  * 1. If m1.clock.happensBefore(m2.clock) -> m1 comes before m2
  * 2. If m2.clock.happensBefore(m1.clock) -> m2 comes before m1

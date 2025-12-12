@@ -4,6 +4,7 @@ import p2p.common.rmi.PeerService;
 
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.rmi.server.UnicastRemoteObject;
 
 /**
  * Manages the RMI server for this peer.
@@ -31,7 +32,7 @@ public class RMIServer {
 
         // Ensure the service is exported
         try {
-            java.rmi.server.UnicastRemoteObject.exportObject(service, 0);
+            java.rmi.server.UnicastRemoteObject.exportObject(service, port);
         } catch (java.rmi.server.ExportException e) {
             // Already exported, ignore
         }
@@ -60,7 +61,7 @@ public class RMIServer {
             }
 
             if (service != null) {
-                java.rmi.server.UnicastRemoteObject.unexportObject(service, true);
+                UnicastRemoteObject.unexportObject(service, true);
             }
         } catch (Exception e) {
             System.err.println("[RMI] Error stopping server: " + e.getMessage());

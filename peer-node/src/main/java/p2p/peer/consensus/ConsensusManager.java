@@ -19,7 +19,8 @@ public class ConsensusManager {
 
     private final User localUser;
     private final GroupManager groupManager;
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors());
+    private final ScheduledExecutorService executor = Executors
+            .newScheduledThreadPool(Runtime.getRuntime().availableProcessors());
 
     // Map of requestId -> Future to track pending sync requests
     private final Map<String, CompletableFuture<List<ChatMessage>>> pendingRequests = new ConcurrentHashMap<>();
@@ -167,27 +168,27 @@ public class ConsensusManager {
      * Query a single member for missing messages.
      */
     private CompletableFuture<List<ChatMessage>> querySingleMember(String groupId, VectorClock lastKnownState,
-            User member) {
+                                                                   User member) {
         CompletableFuture<List<ChatMessage>> future = new CompletableFuture<>();
         String requestId = UUID.randomUUID().toString();
 
         pendingRequests.put(requestId, future);
 
         ScheduledFuture<?> timeoutTask = executor.schedule(() -> {
-                if (pendingRequests.remove(requestId) != null) {
-                    future.complete(Collections.emptyList());
-                }
+            if (pendingRequests.remove(requestId) != null) {
+                future.complete(Collections.emptyList());
+            }
         }, 5, TimeUnit.SECONDS);
 
         userQueryRetry(requestId, groupId, lastKnownState, member, 0, 3, timeoutTask, future);
         return future;
     }
 
-
     private void userQueryRetry(String requestId, String groupId, VectorClock lastKnownState, User member,
                                 int currAttempt, int maxAttempt,
-                                ScheduledFuture<?> timeoutTask, CompletableFuture<List<ChatMessage>> future){
-        if(currAttempt >= maxAttempt || future.isDone()) return;
+                                ScheduledFuture<?> timeoutTask, CompletableFuture<List<ChatMessage>> future) {
+        if (currAttempt >= maxAttempt || future.isDone())
+            return;
         try {
             SyncRequest request = new SyncRequest(
                     requestId,
@@ -203,13 +204,14 @@ public class ConsensusManager {
 
         } catch (Exception e) {
             if (currAttempt == maxAttempt - 1) {
-               if(pendingRequests.remove(requestId) != null){
-                   timeoutTask.cancel(false);
-                   future.complete(Collections.emptyList());
-               }
+                if (pendingRequests.remove(requestId) != null) {
+                    timeoutTask.cancel(false);
+                    future.complete(Collections.emptyList());
+                }
             } else {
                 long backoff = 500L * (1L << currAttempt);
-                executor.schedule(() -> userQueryRetry(requestId, groupId, lastKnownState, member, currAttempt, maxAttempt, timeoutTask, future), backoff, TimeUnit.MILLISECONDS);
+                executor.schedule(() -> userQueryRetry(requestId, groupId, lastKnownState, member, currAttempt + 1,
+                        maxAttempt, timeoutTask, future), backoff, TimeUnit.MILLISECONDS);
             }
         }
 

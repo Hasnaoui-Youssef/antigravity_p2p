@@ -12,7 +12,7 @@ import java.util.function.Consumer;
  * Manages causal delivery of messages based on vector clocks.
  * Buffers messages that arrive before their causal dependencies are satisfied
  * and delivers them in causal order.
- * 
+ *
  * A message is deliverable when:
  * 1. msgClock[sender] == localClock[sender] + 1 (next expected from sender)
  * 2. For all other processes p: msgClock[p] <= localClock[p] (no unknown causal
@@ -25,7 +25,7 @@ public class CausalDeliveryManager {
 
     /**
      * Creates a new CausalDeliveryManager.
-     * 
+     *
      * @param localClock The local vector clock (will be updated on message
      *                   delivery)
      */
@@ -36,12 +36,12 @@ public class CausalDeliveryManager {
 
     /**
      * Checks if a message is deliverable based on causal ordering.
-     * 
+     *
      * A message is deliverable when:
      * 1. msgClock[sender] == localClock[sender] + 1 (next expected from sender)
      * 2. For all other processes p: msgClock[p] <= localClock[p] (no unknown causal
      * dependencies)
-     * 
+     *
      * @param message The message to check
      * @return true if the message can be delivered, false if it should be buffered
      */
@@ -88,7 +88,7 @@ public class CausalDeliveryManager {
      * met.
      * After delivering a message, checks if any buffered messages become
      * deliverable.
-     * 
+     *
      * @param message          The message to deliver
      * @param deliveryCallback Called for each message that is delivered (in causal
      *                         order)
@@ -168,7 +168,7 @@ public class CausalDeliveryManager {
 
     /**
      * Gets the count of pending (buffered) messages.
-     * 
+     *
      * @return The number of messages waiting to be delivered
      */
     public int getPendingCount() {
@@ -179,7 +179,7 @@ public class CausalDeliveryManager {
 
     /**
      * Gets all pending (buffered) messages.
-     * 
+     *
      * @return A list of all pending messages
      */
     public List<Message> getPendingMessages() {

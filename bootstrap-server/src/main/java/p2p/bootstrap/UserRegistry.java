@@ -67,9 +67,9 @@ public class UserRegistry {
     public List<User> searchByUsername(String username) {
         String query = username.toLowerCase();
         return users.values().stream()
-            .map(entry -> entry.user)
-            .filter(user -> user.username().toLowerCase().contains(query))
-            .collect(Collectors.toList());
+                .map(entry -> entry.user)
+                .filter(user -> user.username().toLowerCase().contains(query))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -77,9 +77,9 @@ public class UserRegistry {
      */
     public List<User> searchByIp(String ip) {
         return users.values().stream()
-            .map(entry -> entry.user)
-            .filter(user -> user.ipAddress().contains(ip))
-            .collect(Collectors.toList());
+                .map(entry -> entry.user)
+                .filter(user -> user.ipAddress().contains(ip))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -87,8 +87,8 @@ public class UserRegistry {
      */
     public List<User> getAllUsers() {
         return users.values().stream()
-            .map(entry -> entry.user)
-            .collect(Collectors.toList());
+                .map(entry -> entry.user)
+                .collect(Collectors.toList());
     }
 
     /**

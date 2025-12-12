@@ -127,10 +127,9 @@ public class GossipManager {
             for (Group group : groups) {
                 // Select random member to gossip with
                 // Select random member to gossip with (including leader)
-                List<String> members = new ArrayList<>(group.activeMembers().stream()
+                List<String> members = group.activeMembers().stream()
                         .map(User::userId)
-                        .filter(id -> !id.equals(localUser.userId()))
-                        .collect(Collectors.toList()));
+                        .filter(id -> !id.equals(localUser.userId())).collect(Collectors.toList());
 
                 if (members.isEmpty())
                     continue;

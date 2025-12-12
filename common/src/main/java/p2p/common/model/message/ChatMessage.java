@@ -28,8 +28,8 @@ public final class ChatMessage extends Message {
     private final String senderUsername;
 
     public ChatMessage(String messageId, String senderId, String senderUsername,
-            String targetId, String content, long timestamp,
-            ChatSubtopic subtopic, VectorClock vectorClock) {
+                       String targetId, String content, long timestamp,
+                       ChatSubtopic subtopic, VectorClock vectorClock) {
         super(messageId, senderId, timestamp, MessageTopic.CHAT, vectorClock);
         this.subtopic = Objects.requireNonNull(subtopic);
         this.targetId = Objects.requireNonNull(targetId);
@@ -77,7 +77,7 @@ public final class ChatMessage extends Message {
 
     /**
      * Gets the receiver ID for direct messages.
-     * 
+     *
      * @return the receiver user ID
      * @throws IllegalStateException if this is not a direct message
      */
@@ -90,7 +90,7 @@ public final class ChatMessage extends Message {
 
     /**
      * Gets the group ID for group messages.
-     * 
+     *
      * @return the group ID
      * @throws IllegalStateException if this is not a group message
      */

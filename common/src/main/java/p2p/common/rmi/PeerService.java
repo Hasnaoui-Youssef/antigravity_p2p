@@ -1,8 +1,6 @@
 package p2p.common.rmi;
 
-import p2p.common.model.Group;
 import p2p.common.model.message.Message;
-import p2p.common.vectorclock.VectorClock;
 
 import java.rmi.Remote;
 import java.rmi.RemoteException;
@@ -15,7 +13,7 @@ public interface PeerService extends Remote {
 
     /**
      * Receive a generic message (Direct, Group, Gossip, etc.).
-     * 
+     *
      * @param message The message to receive
      */
     void receiveMessage(Message message) throws RemoteException;

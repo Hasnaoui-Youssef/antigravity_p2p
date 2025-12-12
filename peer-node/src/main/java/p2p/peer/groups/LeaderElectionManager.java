@@ -181,7 +181,7 @@ public class LeaderElectionManager {
      * Determine the candidate using lexicographic ordering (highest user ID wins).
      * This ensures all nodes agree on who should propose.
      */
-    private String determineCandidateLexicographically(Group group) {
+    public String determineCandidateLexicographically(Group group) {
         List<String> allMemberIds = group.members().stream().map(User::userId).collect(Collectors.toList());
 
         // Do NOT add current leader - we are electing a replacement because they failed
@@ -317,7 +317,9 @@ public class LeaderElectionManager {
             return;
         }
 
-        Group updatedGroup = group.withNewLeader(group.members().stream().filter((user) -> user.userId().equals(message.getCandidateId())).findFirst().orElseThrow(), message.getEpoch());
+        Group updatedGroup = group.withNewLeader(group.members().stream()
+                        .filter((user) -> user.userId().equals(message.getCandidateId())).findFirst().orElseThrow(),
+                message.getEpoch());
         groupManager.updateGroup(updatedGroup);
 
         ongoingElections.remove(message.getGroupId());
@@ -359,7 +361,8 @@ public class LeaderElectionManager {
 
         // Determine winner (should be the candidate since we have quorum)
         String winner = state.getWinner();
-        User winnerUser = group.members().stream().filter((user) -> user.userId().equals(winner)).findFirst().orElseThrow();
+        User winnerUser = group.members().stream().filter((user) -> user.userId().equals(winner)).findFirst()
+                .orElseThrow();
 
         // Update group with new leader
         Group updatedGroup = group.withNewLeader(winnerUser, state.epoch);

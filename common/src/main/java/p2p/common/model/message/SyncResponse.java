@@ -22,7 +22,7 @@ public final class SyncResponse extends Message {
     private final List<ChatMessage> missingMessages;
 
     public SyncResponse(String messageId, String senderId, long timestamp, String requestId, String groupId,
-            List<ChatMessage> missingMessages, VectorClock vectorClock) {
+                        List<ChatMessage> missingMessages, VectorClock vectorClock) {
         super(messageId, senderId, timestamp, MessageTopic.SYNC_RESPONSE, vectorClock);
         this.requestId = Objects.requireNonNull(requestId);
         this.groupId = Objects.requireNonNull(groupId);
@@ -30,7 +30,7 @@ public final class SyncResponse extends Message {
     }
 
     public static SyncResponse create(String senderId, String requestId, String groupId,
-            List<ChatMessage> missingMessages, VectorClock vectorClock) {
+                                      List<ChatMessage> missingMessages, VectorClock vectorClock) {
         return new SyncResponse(
                 UUID.randomUUID().toString(),
                 senderId,

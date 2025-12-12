@@ -31,7 +31,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Merges the logic of the previous PeerController and PeerServiceImpl.
  * Acts as the RMI server implementation and the central coordination point.
  */
-public class PeerController extends UnicastRemoteObject implements PeerService {
+public class PeerController implements PeerService {
 
     private final User localUser;
     private final VectorClock vectorClock;
@@ -66,7 +66,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
      */
     public PeerController(String username, int rmiPort, String bootstrapHost, int bootstrapPort, int udpPort)
             throws Exception {
-        super(); // Export this object
+        // No super() call here to avoid premature export
 
         String localIp = InetAddress.getLocalHost().getHostAddress();
         this.localUser = User.create(username, localIp, rmiPort);
@@ -85,7 +85,6 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         this.electionManager.setGossipManager(gossipManager);
         this.groupManager.setElectionManager(electionManager);
 
-        // We don't need PeerServiceImpl anymore, we ARE the service
         this.rmiServer = new RMIServer(rmiPort, "PeerService");
 
         this.heartbeatSender = new HeartbeatSender(localUser, bootstrapHost, udpPort);
@@ -95,8 +94,10 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         Registry registry = LocateRegistry.getRegistry(bootstrapHost, bootstrapPort);
         this.bootstrapService = (BootstrapService) registry.lookup("BootstrapService");
 
-        // Register internal listener to trigger notifyAll for waiters
         this.addEventListener(new InternalEventListener());
+
+        // Explicitly export AFTER full initialization
+        UnicastRemoteObject.exportObject(this, rmiPort);
     }
 
     public void addEventListener(PeerEventListener listener) {
@@ -123,6 +124,9 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         }
 
         // Check username uniqueness
+        // TODO, allow user to register, letting the bootstrap server handle collision.
+        // We ought to re-implement our user design so that we can handle same username
+        // cases.
         List<User> existingUsers = bootstrapService.searchByUsername(localUser.username());
         if (!existingUsers.isEmpty()) {
             boolean collision = existingUsers.stream()
@@ -133,7 +137,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             }
         }
 
-        rmiServer.start(this); // We are the service
+        rmiServer.start(this);
         heartbeatThread.start();
         bootstrapService.register(localUser);
         gossipManager.start();
@@ -159,7 +163,6 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
             try {
                 bootstrapService.unregister(localUser.userId());
             } catch (Exception e) {
-                // Ignore
             }
         }
 
@@ -249,6 +252,10 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         return groupManager.getPendingInvitations();
     }
 
+    public void leaveGroup(String groupId) throws Exception {
+        groupManager.leaveGroup(groupId);
+    }
+
     public void sendGroupMessage(String groupId, String content) {
         Group group = groupManager.getGroup(groupId);
         if (group == null) {
@@ -303,10 +310,34 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
     // ========== Message Handling Helpers ==========
 
     private void handleGroupEvent(GroupEventMessage message) {
+        String groupId = message.getGroup().groupId();
+        Group group = groupManager.getGroup(groupId);
+
         switch (message.getEvent()) {
             case CREATED -> groupManager.addFinalizedGroup(message.getGroup());
-            case USER_JOINED -> groupManager.addUser(message.getGroup().groupId(), message.getAffectedUser());
-            case DISSOLVED, USER_LEFT -> {}
+            case USER_JOINED -> {
+                // Security check: Only leader can broadcast USER_JOINED
+                if (group != null && !message.getSenderId().equals(group.leader().userId())) {
+                    notifyLog("Security Warning: Ignoring USER_JOINED from non-leader " + message.getSenderId());
+                    return;
+                }
+                groupManager.addUser(message.getGroup().groupId(), message.getAffectedUser());
+            }
+            case USER_REJECTED -> {
+                // Security check: Only leader can broadcast USER_REJECTED
+                // Although currently we don't have explicit logic storing rejected members in
+                // active groups,
+                // we should respect the check.
+                if (group != null && !message.getSenderId().equals(group.leader().userId())) {
+                    notifyLog("Security Warning: Ignoring USER_REJECTED from non-leader " + message.getSenderId());
+                    return;
+                }
+                // Logic for user rejected if we were tracking it in active groups
+            }
+            case USER_LEFT -> // USER_LEFT can come from the user themselves or the leader.
+                // We trust it for now as per design.
+                    groupManager.removeUser(message.getGroup().groupId(), message.getAffectedUser());
+            case DISSOLVED -> groupManager.dissolveGroup(message.getGroup().groupId());
         }
     }
 
@@ -415,69 +446,6 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
         }
     }
 
-    // ========== Wait Methods (Robust Synchronization) ==========
-
-    /**
-     * Waits for messages to be synced to the group using wait/notify.
-     */
-    public boolean waitForMessages(String groupId, int expectedMessageCount, long timeoutMs) {
-        long startTime = System.currentTimeMillis();
-        long endTime = startTime + timeoutMs;
-
-        synchronized (messageWaitLock) {
-            while (System.currentTimeMillis() < endTime) {
-                int messageCount = groupManager.getMessages(groupId).size();
-                if (messageCount >= expectedMessageCount) {
-                    return true;
-                }
-
-                try {
-                    long waitTime = endTime - System.currentTimeMillis();
-                    if (waitTime > 0) {
-                        messageWaitLock.wait(waitTime);
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Waits for a group to be created/received.
-     */
-    public boolean waitForGroup(String groupId, long timeoutMs) {
-        long startTime = System.currentTimeMillis();
-        long endTime = startTime + timeoutMs;
-
-        synchronized (groupWaitLock) {
-            while (System.currentTimeMillis() < endTime) {
-                if (groupId != null) {
-                    if (groupManager.getGroup(groupId) != null) {
-                        return true;
-                    }
-                } else {
-                    if (!groupManager.getGroups().isEmpty()) {
-                        return true;
-                    }
-                }
-
-                try {
-                    long waitTime = endTime - System.currentTimeMillis();
-                    if (waitTime > 0) {
-                        groupWaitLock.wait(waitTime);
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
-            }
-        }
-        return false;
-    }
-
     // ========== Notification Helpers ==========
 
     private void notifyLog(String message) {
@@ -495,7 +463,7 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
     // ========== Internal Accessors (for testing) ==========
 
     public VectorClock getVectorClock() {
-        return vectorClock;
+        return vectorClock.clone();
     }
 
     public MessageHandler getMessageHandler() {
@@ -522,10 +490,12 @@ public class PeerController extends UnicastRemoteObject implements PeerService {
 
     public void simulateNetworkFailure() {
         rmiServer.stop();
+        started = false;
     }
 
     public void restoreNetwork() throws Exception {
         rmiServer.start(this);
+        started = true;
     }
 
     // ========== Internal Listener for Synchronization ==========

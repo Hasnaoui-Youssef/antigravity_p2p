@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentSkipListSet;
 /**
  * A data structure that stores messages ordered by their vector clocks
  * with deterministic ordering for concurrent events.
- * 
+ *
  * Ordering rules:
  * 1. If m1.clock.happensBefore(m2.clock) -> m1 comes before m2
  * 2. If m2.clock.happensBefore(m1.clock) -> m2 comes before m1
@@ -29,7 +29,7 @@ public class OrderedMessageStore {
     /**
      * Adds a message to the store.
      * Duplicate messages (same message ID) are ignored.
-     * 
+     *
      * @param message The message to add
      */
     public void addMessage(Message message) {
@@ -40,7 +40,7 @@ public class OrderedMessageStore {
 
     /**
      * Gets all messages in causal order.
-     * 
+     *
      * @return A list of all messages ordered by their vector clocks
      */
     public List<Message> getOrderedMessages() {
@@ -49,7 +49,7 @@ public class OrderedMessageStore {
 
     /**
      * Gets messages that happened after the given clock.
-     * 
+     *
      * @param since The vector clock to compare against. Messages with clocks
      *              that happen after this clock are returned.
      *              If null or empty, all messages are returned.
@@ -86,7 +86,7 @@ public class OrderedMessageStore {
 
     /**
      * Gets the number of messages in the store.
-     * 
+     *
      * @return The number of messages
      */
     public int size() {
@@ -95,7 +95,7 @@ public class OrderedMessageStore {
 
     /**
      * Checks if the store is empty.
-     * 
+     *
      * @return true if there are no messages
      */
     public boolean isEmpty() {

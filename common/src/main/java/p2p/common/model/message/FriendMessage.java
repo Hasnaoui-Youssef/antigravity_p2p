@@ -24,7 +24,7 @@ public final class FriendMessage extends Message {
     private final SubTopic friendMessageType;
 
     private FriendMessage(String messageId, String senderId, long timestamp, User sender,
-            SubTopic messageType, VectorClock vectorClock) {
+                          SubTopic messageType, VectorClock vectorClock) {
         super(messageId, senderId, timestamp, MessageTopic.FRIEND_MESSAGE, vectorClock);
         this.sender = Objects.requireNonNull(sender);
         this.friendMessageType = Objects.requireNonNull(messageType);

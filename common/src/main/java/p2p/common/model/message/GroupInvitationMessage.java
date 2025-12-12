@@ -26,8 +26,8 @@ public final class GroupInvitationMessage extends Message {
     private final List<User> potentialMembers; // Only populated for REQUEST
 
     private GroupInvitationMessage(String messageId, String senderId, long timestamp,
-            GroupInvitationSubtopic subtopic, String groupId, String groupName,
-            List<User> potentialMembers, VectorClock vectorClock) {
+                                   GroupInvitationSubtopic subtopic, String groupId, String groupName,
+                                   List<User> potentialMembers, VectorClock vectorClock) {
         super(messageId, senderId, timestamp, MessageTopic.GROUP_INVITATION, vectorClock);
         this.subtopic = Objects.requireNonNull(subtopic);
         this.groupId = Objects.requireNonNull(groupId);
@@ -48,7 +48,7 @@ public final class GroupInvitationMessage extends Message {
      * Factory method for creating an invitation request.
      */
     public static GroupInvitationMessage createRequest(String senderId, String groupId,
-            String groupName, List<User> potentialMembers, VectorClock vectorClock) {
+                                                       String groupName, List<User> potentialMembers, VectorClock vectorClock) {
         return new GroupInvitationMessage(
                 UUID.randomUUID().toString(),
                 senderId,
@@ -104,7 +104,7 @@ public final class GroupInvitationMessage extends Message {
 
     /**
      * Gets the potential members for invitation requests.
-     * 
+     *
      * @return list of potential members
      * @throws IllegalStateException if this is not a REQUEST message
      */
@@ -141,8 +141,8 @@ public final class GroupInvitationMessage extends Message {
     public String toString() {
         return switch (subtopic) {
             case REQUEST ->
-                String.format("GroupInvitationMessage{id='%s', type=REQUEST, sender='%s', group='%s', members=%d}",
-                        messageId, senderId, groupName, potentialMembers != null ? potentialMembers.size() : 0);
+                    String.format("GroupInvitationMessage{id='%s', type=REQUEST, sender='%s', group='%s', members=%d}",
+                            messageId, senderId, groupName, potentialMembers != null ? potentialMembers.size() : 0);
             case ACCEPT -> String.format("GroupInvitationMessage{id='%s', type=ACCEPT, sender='%s', group='%s'}",
                     messageId, senderId, groupId);
             case REJECT -> String.format("GroupInvitationMessage{id='%s', type=REJECT, sender='%s', group='%s'}",

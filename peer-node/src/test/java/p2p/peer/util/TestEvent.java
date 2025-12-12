@@ -25,6 +25,8 @@ public enum TestEvent {
                 return GROUP_DISSOLVED;
             case USER_JOINED:
                 return MEMBER_JOINED;
+            case USER_LEFT:
+                return MEMBER_LEFT;
             default:
                 throw new IllegalArgumentException("Unknown GroupEvent: " + event);
         }

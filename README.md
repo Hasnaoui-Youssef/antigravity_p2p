@@ -19,11 +19,13 @@ This is a Phase 1 implementation of a peer-to-peer messaging system with:
 ### Local Development
 
 ### Start Bootstrap Server
+
 ```bash
 ./gradlew :bootstrap-server:run
 ```
 
 ### Start Peer Node
+
 ```bash
 ./gradlew :peer-node:run --args="--username Alice --port 5001 --bootstrap localhost:1099"
 ```
@@ -41,10 +43,10 @@ docker compose up -d bootstrap alice bob
 docker compose exec alice sh
 ```
 
-
 ## Testing
 
 ### Unit Tests
+
 ```bash
 ./gradlew :common:test :bootstrap-server:test 
 ./gradlew :peer-node:test --tests '*Test' --tests '!*IntegrationTest'
