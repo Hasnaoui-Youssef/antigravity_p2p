@@ -86,12 +86,12 @@ class MessageTest {
     }
 
     @Test
-    @DisplayName("ToString should include sender and content")
+    @DisplayName("ToString should include sender and content length")
     void testToString() {
         ChatMessage msg = ChatMessage.createDirect(sender, "receiver-id", "Hello!", clock);
         String str = msg.toString();
 
         assertTrue(str.contains(sender.username()));
-        assertTrue(str.contains("Hello!"));
+        assertTrue(str.contains("contentLength"));
     }
 }

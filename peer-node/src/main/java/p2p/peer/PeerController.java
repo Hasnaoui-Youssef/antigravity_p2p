@@ -7,6 +7,7 @@ import p2p.common.model.User;
 import p2p.common.model.message.*;
 import p2p.common.rmi.BootstrapService;
 import p2p.common.rmi.PeerService;
+import p2p.common.rmi.UsernameAlreadyExistsException;
 import p2p.common.vectorclock.VectorClock;
 import p2p.peer.consensus.ConsensusManager;
 import p2p.peer.friends.FriendManager;
@@ -117,29 +118,28 @@ public class PeerController implements PeerService {
 
     /**
      * Starts the peer (RMI server, heartbeat).
+     *
+     * @throws UsernameAlreadyExistsException if the username is already taken
      */
     public synchronized void start() throws Exception {
         if (started) {
             throw new IllegalStateException("Peer already started");
         }
 
-        // Check username uniqueness
-        // TODO, allow user to register, letting the bootstrap server handle collision.
-        // We ought to re-implement our user design so that we can handle same username
-        // cases.
-        List<User> existingUsers = bootstrapService.searchByUsername(localUser.username());
-        if (!existingUsers.isEmpty()) {
-            boolean collision = existingUsers.stream()
-                    .anyMatch(u -> !u.userId().equals(localUser.userId()));
-
-            if (collision) {
-                throw new IllegalStateException("Username '" + localUser.username() + "' is already taken.");
-            }
-        }
-
         rmiServer.start(this);
         heartbeatThread.start();
-        bootstrapService.register(localUser);
+
+        try {
+            // Register with bootstrap server - will throw if username taken
+            bootstrapService.register(localUser);
+        } catch (UsernameAlreadyExistsException e) {
+            // Clean up on registration failure
+            rmiServer.stop();
+            heartbeatSender.stop();
+            heartbeatThread.interrupt();
+            throw e;
+        }
+
         gossipManager.start();
 
         started = true;
@@ -300,7 +300,7 @@ public class PeerController implements PeerService {
             case GROUP_INVITATION -> handleGroupInvitation((GroupInvitationMessage) message);
             case GOSSIP -> handleGossipMessage((GossipMessage) message);
             case SYNC_REQUEST -> handleSyncRequest((SyncRequest) message);
-            case FRIEND_MESSAGE -> handleFriendshipMessage((FriendMessage) message);
+            case FRIEND_INVITATION -> handleFriendshipMessage((FriendMessage) message);
             case SYNC_RESPONSE -> handleSyncResponse((SyncResponse) message);
             case ELECTION -> handleElectionMessage((ElectionMessage) message);
             case GROUP_EVENT -> handleGroupEvent((GroupEventMessage) message);

@@ -430,56 +430,71 @@ public class GroupManager {
     }
 
     public void leaveGroup(String groupId) throws Exception {
+        Objects.requireNonNull(groupId, "groupId must not be null");
+
         Group group = groups.get(groupId);
         if (group == null) {
             throw new IllegalArgumentException("Not a member of group: " + groupId);
         }
 
+        // Validate that user is actually an active member (not pending)
+        if (!group.isLeader(localUser) && !group.isMember(localUser)) {
+            throw new IllegalStateException("Cannot leave group: not an active member");
+        }
+
+        // Check if leaving would make group too small
+        int remainingAfterLeave = group.activeMembers().size() - 1;
+        if (remainingAfterLeave < 3) {
+            // Group will dissolve - broadcast dissolution and clean up
+            notifyLog("Group " + group.name() + " will dissolve (only " + remainingAfterLeave + " members remaining)");
+            broadcastGroupDissolution(group);
+            groups.remove(groupId);
+            groupMessages.remove(groupId);
+            notifyGroupEvent(groupId, GroupEvent.DISSOLVED, "Group dissolved - too few members");
+            notifyLog("Left and dissolved group: " + group.name());
+            return;
+        }
+
         // 1. If we are the leader, we must hand over leadership first
         if (isLeader(groupId)) {
-            // Determine successor
+            // Determine successor from remaining members (excluding self)
+            Set<User> remainingMembers = group.members();
+            if (remainingMembers.isEmpty()) {
+                throw new IllegalStateException("No members available for leadership handover");
+            }
+
             String successorId = electionManager.determineCandidateLexicographically(group);
-            User successor = group.members().stream()
+            User successor = remainingMembers.stream()
                     .filter(u -> u.userId().equals(successorId))
                     .findFirst()
                     .orElseThrow(() -> new IllegalStateException("Successor not found in members"));
 
             long newEpoch = group.epoch() + 1;
 
-            // Broadcast new leader to everyone (including ourselves, processed locally)
-            // We do this manually here instead of triggering a full election
+            // Create updated group with new leader (removes successor from members, adds as leader)
             Group updatedGroup = group.withNewLeader(successor, newEpoch);
 
-            // Broadcast result
+            // Broadcast election result to all members
             p2p.common.model.message.ElectionMessage result = p2p.common.model.message.ElectionMessage.create(
                     localUser.userId(), groupId,
                     p2p.common.model.message.ElectionMessage.ElectionType.RESULT,
                     successorId, newEpoch,
                     vectorClock.clone());
 
-            // We need to broadcast this effectively. We can use the existing
-            // electionManager helper if exposed?
-            // Or just manually iterate since GroupManager has access to members.
-            // Let's rely on standard broadcast logic.
-            for (User member : group.members()) { // Send to all current members
+            for (User member : group.members()) {
                 if (member.userId().equals(localUser.userId()))
                     continue;
                 sendElectionMessage(member, result);
             }
 
-            // Update local state immediately so subsequent leave broadcast comes from
-            // "non-leader"
+            // Update local state immediately
             updateGroup(updatedGroup);
-            group = updatedGroup; // Refresh local reference for the next step
+            group = updatedGroup;
 
             notifyLog("Handed over leadership of group " + group.name() + " to " + successor.username());
         }
 
-        // 2. Broadcast USER_LEFT event
-        // Now (or originally) we are just a member leaving.
-        // We broadcast to the specific group members.
-        // Note: The new leader (if we just handed over) will receive this and update
-        // the group.
+        // 2. Broadcast USER_LEFT event to remaining members (excluding self)
         broadcastUserLeft(group);
 
         // 3. Remove locally
@@ -500,10 +515,10 @@ public class GroupManager {
     }
 
     /**
-     * Broadcast user left event to ALL members.
+     * Broadcast user left event to ALL members (excluding self).
      */
     private void broadcastUserLeft(Group group) {
-        for (User member : group.activeMembers()) { // activeMembers includes leader + members
+        for (User member : group.activeMembers()) {
             if (member.userId().equals(localUser.userId())) {
                 continue; // Skip self
             }
@@ -520,22 +535,55 @@ public class GroupManager {
         }
     }
 
-    public void removeUser(String groupId, User user) {
-        groups.computeIfPresent(groupId, (id, group) -> group.withRemovedMember(user));
-        Group group = groups.get(groupId);
-        if (group == null)
-            return;
+    /**
+     * Broadcast group dissolution event to ALL members (excluding self).
+     */
+    private void broadcastGroupDissolution(Group group) {
+        for (User member : group.activeMembers()) {
+            if (member.userId().equals(localUser.userId())) {
+                continue; // Skip self
+            }
 
-        notifyLog("Updated group '" + group.name() + "' with " + (group.members().size() + 1) + " members");
-        notifyGroupEvent(groupId, GroupEvent.USER_LEFT, user.username() + " left " + group.name());
+            try {
+                Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
+                PeerService peerService = (PeerService) registry.lookup("PeerService");
+                GroupEventMessage dissolveMessage = GroupEventMessage.groupDissolvedMessage(localUser.userId(), group,
+                        vectorClock);
+                peerService.receiveMessage(dissolveMessage);
+            } catch (Exception e) {
+                notifyError("Failed to send group dissolution event to " + member.username(), e);
+            }
+        }
+    }
+
+    public void removeUser(String groupId, User user) {
+        Objects.requireNonNull(groupId, "groupId must not be null");
+        Objects.requireNonNull(user, "user must not be null");
+
+        Group group = groups.get(groupId);
+        if (group == null) {
+            return;
+        }
+
+        // If the removed user is the leader, we need special handling
+        // This should not normally happen since leader handover should occur first,
+        // but handle it gracefully
+        if (group.isLeader(user)) {
+            notifyLog("Leader " + user.username() + " left group " + group.name() + " - dissolving group");
+            dissolveGroup(groupId);
+            return;
+        }
+
+        // Remove the member from the group
+        Group updatedGroup = group.withRemovedMember(user);
+        groups.put(groupId, updatedGroup);
+
+        notifyLog("Updated group '" + updatedGroup.name() + "' with " + (updatedGroup.members().size() + 1) + " members");
+        notifyGroupEvent(groupId, GroupEvent.USER_LEFT, user.username() + " left " + updatedGroup.name());
 
         // Check for minimum size (Leader + 2 members = 3 total)
-        // group.members().size() returns non-leader members.
-        // So total size = group.members().size() + 1 (the leader).
-        // If total size < 3, dissolve.
-        // -> group.members().size() < 2
-        if (group.members().size() < 2) {
-            notifyLog("Group " + group.name() + " fell below minimum size after user leave. Dissolving.");
+        if (updatedGroup.members().size() < 2) {
+            notifyLog("Group " + updatedGroup.name() + " fell below minimum size after user leave. Dissolving.");
             dissolveGroup(groupId);
         }
     }

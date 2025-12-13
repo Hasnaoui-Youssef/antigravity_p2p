@@ -21,7 +21,7 @@ public abstract class Message implements Serializable {
     protected final VectorClock vectorClock;
 
     protected Message(String messageId, String senderId, long timestamp, MessageTopic type) {
-        this(messageId, senderId, timestamp, type, null);
+        this(messageId, senderId, timestamp, type, new VectorClock());
     }
 
     protected Message(String messageId, String senderId, long timestamp, MessageTopic type, VectorClock vectorClock) {
@@ -29,7 +29,7 @@ public abstract class Message implements Serializable {
         this.senderId = Objects.requireNonNull(senderId);
         this.timestamp = timestamp;
         this.topic = Objects.requireNonNull(type);
-        this.vectorClock = vectorClock != null ? vectorClock.clone() : null;
+        this.vectorClock = Objects.requireNonNull(vectorClock, "vectorClock must not be null").clone();
     }
 
     public String getMessageId() {
@@ -51,10 +51,10 @@ public abstract class Message implements Serializable {
     /**
      * Gets the vector clock associated with this message.
      *
-     * @return a defensive copy of the vector clock, or null if not set
+     * @return a defensive copy of the vector clock
      */
     public VectorClock getVectorClock() {
-        return vectorClock != null ? vectorClock.clone() : null;
+        return vectorClock.clone();
     }
 
     @Override

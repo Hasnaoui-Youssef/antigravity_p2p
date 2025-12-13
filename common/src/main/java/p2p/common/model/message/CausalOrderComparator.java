@@ -11,10 +11,8 @@ import java.util.Comparator;
  * Ordering rules:
  * 1. If m1.clock.happensBefore(m2.clock) -> m1 comes before m2
  * 2. If m2.clock.happensBefore(m1.clock) -> m2 comes before m1
- * 3. If concurrent (neither happens-before): compare sender IDs
- * lexicographically
- * 4. If same sender with concurrent clocks: throw IllegalStateException (this
- * is a bug)
+ * 3. If concurrent (neither happens-before): compare sender IDs lexicographically
+ * 4. If same sender with concurrent clocks: use message ID as final tiebreaker
  */
 public class CausalOrderComparator implements Comparator<Message> {
 
@@ -24,12 +22,14 @@ public class CausalOrderComparator implements Comparator<Message> {
             return 0;
         }
 
+        // First check if same message by ID
+        int messageIDCompare = m1.getMessageId().compareTo(m2.getMessageId());
+        if (messageIDCompare == 0) {
+            return 0;
+        }
+
         VectorClock clock1 = m1.getVectorClock();
         VectorClock clock2 = m2.getVectorClock();
-
-        if (clock1 == null || clock2 == null) {
-            throw new IllegalArgumentException("Clocks cannot be null");
-        }
 
         if (clock1.happensBefore(clock2)) {
             return -1;
@@ -38,16 +38,13 @@ public class CausalOrderComparator implements Comparator<Message> {
             return 1;
         }
 
-        // Concurrent events or no clocks: use sender ID as primary tiebreaker
+        // Concurrent events: use sender ID as primary tiebreaker
         int senderCompare = m1.getSenderId().compareTo(m2.getSenderId());
         if (senderCompare != 0) {
             return senderCompare;
         }
 
-        // Same sender with concurrent messages indicates a failure - messages from
-        // the same sender should always have a happens-before relationship
-        throw new IllegalStateException(
-                "Messages from the same sender should never be concurrent. " +
-                        "Sender: " + m1.getSenderId() + ", Messages: " + m1.getMessageId() + ", " + m2.getMessageId());
+        // Same sender with concurrent clocks: use message ID as final tiebreaker
+        return messageIDCompare;
     }
 }

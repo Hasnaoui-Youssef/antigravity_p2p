@@ -1069,6 +1069,11 @@ class GroupChatIntegrationTest {
         String groupId = tempGroup.groupId();
         assertEquals(4, alice.getGroup(groupId).allMembers().size());
 
+        // Send a message from the leader to keep leader activity fresh
+        // This prevents the gossip manager from detecting leader failure during the test
+        alice.sendGroupMessage(groupId, "Keeping group alive");
+        Thread.sleep(500);
+
         // David leaves
         david.leaveGroup(groupId);
         Thread.sleep(2000);
@@ -1078,9 +1083,9 @@ class GroupChatIntegrationTest {
         assertNotNull(aliceGroup, "Group should continue for Alice");
         assertEquals(3, aliceGroup.allMembers().size(), "Group should have 3 members");
 
-        assertNotNull(bob.getGroup(groupId));
-        assertNotNull(charlie.getGroup(groupId));
-        assertNull(david.getGroup(groupId));
+        assertNotNull(bob.getGroup(groupId), "Group should continue for Bob");
+        assertNotNull(charlie.getGroup(groupId), "Group should continue for Charlie");
+        assertNull(david.getGroup(groupId), "David should no longer have the group");
 
         // Verify David is actually removed from Alice's view
         assertFalse(aliceGroup.isMember(david.getLocalUser().userId()), "David should not be a member");

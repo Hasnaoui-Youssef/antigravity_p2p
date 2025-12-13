@@ -2,10 +2,12 @@ package p2p.bootstrap;
 
 import p2p.common.model.User;
 import p2p.common.rmi.BootstrapService;
+import p2p.common.rmi.UsernameAlreadyExistsException;
 
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Implementation of the BootstrapService RMI interface.
@@ -16,16 +18,18 @@ public class BootstrapServiceImpl extends UnicastRemoteObject implements Bootstr
 
     public BootstrapServiceImpl(UserRegistry userRegistry) throws RemoteException {
         super();
-        this.userRegistry = userRegistry;
+        this.userRegistry = Objects.requireNonNull(userRegistry, "userRegistry must not be null");
     }
 
     @Override
-    public void register(User user) throws RemoteException {
-        userRegistry.addUser(user);
+    public void register(User user) throws RemoteException, UsernameAlreadyExistsException {
+        Objects.requireNonNull(user, "user must not be null");
+        userRegistry.registerUser(user);
     }
 
     @Override
     public void unregister(String userId) throws RemoteException {
+        Objects.requireNonNull(userId, "userId must not be null");
         userRegistry.removeUser(userId);
     }
 
@@ -42,5 +46,10 @@ public class BootstrapServiceImpl extends UnicastRemoteObject implements Bootstr
     @Override
     public List<User> getAllUsers() throws RemoteException {
         return userRegistry.getAllUsers();
+    }
+
+    @Override
+    public boolean isUsernameAvailable(String username) throws RemoteException {
+        return userRegistry.isUsernameAvailable(username);
     }
 }

@@ -3,6 +3,7 @@ package p2p.bootstrap;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketException;
+import java.util.Objects;
 
 /**
  * UDP listener that receives heartbeat packets from peers.
@@ -10,17 +11,42 @@ import java.net.SocketException;
  */
 public class HeartbeatListener implements Runnable {
 
-    private static final int UDP_PORT = 9876;
+    public static final int DEFAULT_UDP_PORT = 9876;
     private static final int BUFFER_SIZE = 1024;
 
     private final UserRegistry userRegistry;
     private final DatagramSocket socket;
+    private final int udpPort;
     private volatile boolean running = true;
 
+    /**
+     * Creates a HeartbeatListener on the default UDP port.
+     */
     public HeartbeatListener(UserRegistry userRegistry) throws SocketException {
-        this.userRegistry = userRegistry;
-        this.socket = new DatagramSocket(UDP_PORT);
-        System.out.println("[Heartbeat] UDP listener started on port " + UDP_PORT);
+        this(userRegistry, DEFAULT_UDP_PORT);
+    }
+
+    /**
+     * Creates a HeartbeatListener on the specified UDP port.
+     *
+     * @param userRegistry The user registry to update with heartbeats
+     * @param udpPort The UDP port to listen on
+     */
+    public HeartbeatListener(UserRegistry userRegistry, int udpPort) throws SocketException {
+        this.userRegistry = Objects.requireNonNull(userRegistry, "userRegistry must not be null");
+        if (udpPort < 1 || udpPort > 65535) {
+            throw new IllegalArgumentException("UDP port must be between 1 and 65535");
+        }
+        this.udpPort = udpPort;
+        this.socket = new DatagramSocket(udpPort);
+        System.out.println("[Heartbeat] UDP listener started on port " + udpPort);
+    }
+
+    /**
+     * Gets the UDP port this listener is bound to.
+     */
+    public int getUdpPort() {
+        return udpPort;
     }
 
     @Override

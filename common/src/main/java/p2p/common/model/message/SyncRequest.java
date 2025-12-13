@@ -38,6 +38,6 @@ public final class SyncRequest extends Message {
     @Override
     public String toString() {
         return String.format("SyncRequest{id='%s', sender='%s', group='%s', state=%s}",
-                messageId, senderId, groupId, vectorClock);
+                messageId, senderId, groupId, getVectorClock());
     }
 }

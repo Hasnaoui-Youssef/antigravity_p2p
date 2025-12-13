@@ -7,10 +7,7 @@ import p2p.common.vectorclock.VectorClock;
 
 import java.io.Serial;
 import java.time.Instant;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Unified message class for group invitation requests and responses.
@@ -33,6 +30,11 @@ public final class GroupInvitationMessage extends Message {
         this.groupId = Objects.requireNonNull(groupId);
         this.groupName = groupName; // May be null for responses
 
+        if(potentialMembers == null && subtopic == GroupInvitationSubtopic.REQUEST){
+            throw new IllegalStateException(
+                    "potentialMembers should be provided for REQUEST subtopic");
+        }
+
         // Validate that potentialMembers is only provided for REQUEST subtopic
         if (potentialMembers != null && subtopic != GroupInvitationSubtopic.REQUEST) {
             throw new IllegalStateException(
@@ -40,7 +42,7 @@ public final class GroupInvitationMessage extends Message {
         }
 
         this.potentialMembers = potentialMembers != null
-                ? Collections.unmodifiableList(potentialMembers)
+                ? List.copyOf(potentialMembers)
                 : null;
     }
 
@@ -144,9 +146,9 @@ public final class GroupInvitationMessage extends Message {
                     String.format("GroupInvitationMessage{id='%s', type=REQUEST, sender='%s', group='%s', members=%d}",
                             messageId, senderId, groupName, potentialMembers != null ? potentialMembers.size() : 0);
             case ACCEPT -> String.format("GroupInvitationMessage{id='%s', type=ACCEPT, sender='%s', group='%s'}",
-                    messageId, senderId, groupId);
+                    messageId, senderId, groupName);
             case REJECT -> String.format("GroupInvitationMessage{id='%s', type=REJECT, sender='%s', group='%s'}",
-                    messageId, senderId, groupId);
+                    messageId, senderId, groupName);
         };
     }
 }

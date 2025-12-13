@@ -76,6 +76,7 @@ public class VectorClock implements Serializable, Cloneable {
             String processId = entry.getKey();
             if (!clock.containsKey(processId) && entry.getValue() > 0) {
                 strictlyLess = true;
+                break;
             }
         }
 

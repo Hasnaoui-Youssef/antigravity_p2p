@@ -192,7 +192,7 @@ public class LeaderElectionManager {
 
         // Sort lexicographically and pick the highest (last in sorted order)
         Collections.sort(allMemberIds);
-        return allMemberIds.get(allMemberIds.size() - 1);
+        return allMemberIds.getLast();
     }
 
     /**
@@ -317,8 +317,16 @@ public class LeaderElectionManager {
             return;
         }
 
-        Group updatedGroup = group.withNewLeader(group.members().stream()
-                        .filter((user) -> user.userId().equals(message.getCandidateId())).findFirst().orElseThrow(),
+        User newLeader = group.members().stream()
+                .filter(u -> u.userId().equals(message.getCandidateId()))
+                .findFirst()
+                .orElse(null);
+        if(newLeader == null) {
+            notifyError("Election result references unknown member " + message.getCandidateId(), null);
+            return;
+        }
+        Group updatedGroup = group.withNewLeader(
+                newLeader,
                 message.getEpoch());
         groupManager.updateGroup(updatedGroup);
 
@@ -399,7 +407,7 @@ public class LeaderElectionManager {
                 .orElse(null);
 
         if (target == null) {
-            notifyError("Cannot find user " + userId.substring(0, 8) +
+            notifyError("Cannot find user " + userId +
                     " in group members to send vote", null);
             return;
         }
@@ -518,19 +526,25 @@ public class LeaderElectionManager {
 
     private void notifyLog(String message) {
         for (PeerEventListener listener : listeners) {
-            listener.onLog(message);
+            try{
+                listener.onLog(message);
+            }catch(RuntimeException ignored){}
         }
     }
 
     private void notifyError(String message, Throwable t) {
         for (PeerEventListener listener : listeners) {
-            listener.onError(message, t);
+            try{
+                listener.onError(message, t);
+            }catch(RuntimeException ignored){}
         }
     }
 
     private void notifyLeaderElected(String groupId, String leaderId, long epoch) {
         for (PeerEventListener listener : listeners) {
-            listener.onLeaderElected(groupId, leaderId, epoch);
+            try{
+                listener.onLeaderElected(groupId, leaderId, epoch);
+            }catch(RuntimeException ignored){}
         }
     }
 }

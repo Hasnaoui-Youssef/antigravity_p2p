@@ -12,7 +12,6 @@ import java.util.function.Consumer;
  * Manages causal delivery of messages based on vector clocks.
  * Buffers messages that arrive before their causal dependencies are satisfied
  * and delivers them in causal order.
- *
  * A message is deliverable when:
  * 1. msgClock[sender] == localClock[sender] + 1 (next expected from sender)
  * 2. For all other processes p: msgClock[p] <= localClock[p] (no unknown causal
@@ -36,7 +35,6 @@ public class CausalDeliveryManager {
 
     /**
      * Checks if a message is deliverable based on causal ordering.
-     *
      * A message is deliverable when:
      * 1. msgClock[sender] == localClock[sender] + 1 (next expected from sender)
      * 2. For all other processes p: msgClock[p] <= localClock[p] (no unknown causal

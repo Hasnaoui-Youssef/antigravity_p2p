@@ -51,7 +51,7 @@ public class OrderedMessageStore {
      * Gets messages that happened after the given clock.
      *
      * @param since The vector clock to compare against. Messages with clocks
-     *              that happen after this clock are returned.
+     *              that happen strictly after this clock are returned.
      *              If null or empty, all messages are returned.
      * @return A list of messages that happened after the given clock
      */
@@ -69,13 +69,9 @@ public class OrderedMessageStore {
 
         for (Message message : messages) {
             VectorClock msgClock = message.getVectorClock();
-            if (msgClock == null) {
-                continue;
-            }
 
             // A message happened "after" the since clock if:
-            // since.happensBefore(msgClock) is true
-            // This means the message clock is causally after the since clock
+            // the timestamp (since) strictly happens before msgClock
             if (since.happensBefore(msgClock)) {
                 result.add(message);
             }

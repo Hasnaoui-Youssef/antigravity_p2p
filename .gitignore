@@ -33,6 +33,7 @@ hs_err_pid*
 
 # Test outputs
 test-output/
+logs/
 
 # Docker
 .dockerignore

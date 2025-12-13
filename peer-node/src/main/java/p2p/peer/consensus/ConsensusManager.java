@@ -20,7 +20,7 @@ public class ConsensusManager {
     private final User localUser;
     private final GroupManager groupManager;
     private final ScheduledExecutorService executor = Executors
-            .newScheduledThreadPool(Runtime.getRuntime().availableProcessors());
+            .newScheduledThreadPool(2);
 
     // Map of requestId -> Future to track pending sync requests
     private final Map<String, CompletableFuture<List<ChatMessage>>> pendingRequests = new ConcurrentHashMap<>();

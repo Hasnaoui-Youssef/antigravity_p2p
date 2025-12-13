@@ -26,7 +26,7 @@ public final class SyncResponse extends Message {
         super(messageId, senderId, timestamp, MessageTopic.SYNC_RESPONSE, vectorClock);
         this.requestId = Objects.requireNonNull(requestId);
         this.groupId = Objects.requireNonNull(groupId);
-        this.missingMessages = Collections.unmodifiableList(Objects.requireNonNull(missingMessages));
+        this.missingMessages = List.copyOf(Objects.requireNonNull(missingMessages));
     }
 
     public static SyncResponse create(String senderId, String requestId, String groupId,

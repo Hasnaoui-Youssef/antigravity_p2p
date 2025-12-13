@@ -15,8 +15,12 @@ public interface BootstrapService extends Remote {
     /**
      * Register a user with the bootstrap server.
      * Called when a peer joins the network.
+     *
+     * @param user The user to register
+     * @throws RemoteException if RMI communication fails
+     * @throws UsernameAlreadyExistsException if the username is already taken by another user
      */
-    void register(User user) throws RemoteException;
+    void register(User user) throws RemoteException, UsernameAlreadyExistsException;
 
     /**
      * Unregister a user from the bootstrap server.
@@ -38,4 +42,12 @@ public interface BootstrapService extends Remote {
      * Get all currently registered users.
      */
     List<User> getAllUsers() throws RemoteException;
+
+    /**
+     * Check if a username is available for registration.
+     *
+     * @param username The username to check
+     * @return true if the username is available, false if already taken
+     */
+    boolean isUsernameAvailable(String username) throws RemoteException;
 }

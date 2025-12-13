@@ -109,20 +109,15 @@ public final class ChatMessage extends Message {
         return senderUsername;
     }
 
-    @Override
-    public VectorClock getVectorClock() {
-        VectorClock clock = super.getVectorClock();
-        return clock != null ? clock.clone() : null;
-    }
 
     @Override
     public String toString() {
         if (subtopic == ChatSubtopic.DIRECT) {
-            return String.format("ChatMessage{id='%s', type=DIRECT, from='%s', to='%s', content='%s'}",
-                    messageId, senderUsername, targetId, content);
+            return String.format("ChatMessage{id='%s', type=DIRECT, from='%s', to='%s', contentLength='%d'}",
+                    messageId, senderUsername, targetId, content.length());
         } else {
-            return String.format("ChatMessage{id='%s', type=GROUP, from='%s', group='%s', content='%s'}",
-                    messageId, senderUsername, targetId, content);
+            return String.format("ChatMessage{id='%s', type=GROUP, from='%s', group='%s', contentLength='%d'}",
+                    messageId, senderUsername, targetId, content.length());
         }
     }
 }

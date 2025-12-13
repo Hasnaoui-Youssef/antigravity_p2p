@@ -63,18 +63,19 @@ class CausalOrderComparatorTest {
     }
 
     @Test
-    @DisplayName("Same sender with concurrent clocks throws exception")
-    void testSameSenderConcurrentClocksThrowsException() {
+    @DisplayName("Same sender with concurrent clocks uses message ID as tiebreaker")
+    void testSameSenderConcurrentClocksUsesMessageId() {
         VectorClock clock = createClock(SENDER_A, 1);
 
-        // Same sender, same clock - this is invalid and should throw
+        // Same sender, same clock - should use message ID as final tiebreaker
         ChatMessage msg1 = createTestMessage(SENDER_A, "aaa-msg", "First", clock);
         ChatMessage msg2 = createTestMessage(SENDER_A, "bbb-msg", "Second", clock);
 
-        // Messages from the same sender should always have a happens-before
-        // relationship
-        assertThrows(IllegalStateException.class, () -> comparator.compare(msg1, msg2),
-                "Concurrent messages from the same sender should throw IllegalStateException");
+        // Since sender IDs are the same, it should fall back to message ID comparison
+        // "aaa-msg" < "bbb-msg" lexicographically
+        int result = comparator.compare(msg1, msg2);
+        assertTrue(result < 0,
+                "Messages with same sender and concurrent clocks should use message ID as tiebreaker");
     }
 
     @Test
@@ -124,27 +125,28 @@ class CausalOrderComparatorTest {
     }
 
     @Test
-    @DisplayName("Messages with null clocks are compared by sender ID")
-    void testNullClockFallback() {
-        // This tests edge case handling - empty/null clocks use sender ID comparison
-        ChatMessage msg1 = createTestMessageNullClock(SENDER_A, "msg1", "First");
-        ChatMessage msg2 = createTestMessageNullClock(SENDER_B, "msg2", "Second");
+    @DisplayName("Messages with empty clocks are compared by sender ID")
+    void testEmptyClockFallback() {
+        // This tests edge case handling - empty clocks use sender ID comparison
+        ChatMessage msg1 = createTestMessageEmptyClock(SENDER_A, "msg1", "First");
+        ChatMessage msg2 = createTestMessageEmptyClock(SENDER_B, "msg2", "Second");
 
         // Should fall back to comparing sender IDs (senderA < senderB)
         assertTrue(comparator.compare(msg1, msg2) < 0,
-                "Without clocks, should use sender ID as tiebreaker");
+                "With empty clocks, should use sender ID as tiebreaker");
     }
 
     @Test
-    @DisplayName("Messages from same sender with null clocks are not comparable")
-    void testNullClockSameSenderFallback() {
-        // Null/empty clocks from same sender fall back to message ID
-        ChatMessage msg1 = createTestMessageNullClock(SENDER_A, "aaa-msg", "First");
-        ChatMessage msg2 = createTestMessageNullClock(SENDER_A, "bbb-msg", "Second");
+    @DisplayName("Messages from same sender with empty clocks use message ID as tiebreaker")
+    void testEmptyClockSameSenderFallback() {
+        // Empty clocks from same sender fall back to sender comparison (0), then message ID
+        ChatMessage msg1 = createTestMessageEmptyClock(SENDER_A, "aaa-msg", "First");
+        ChatMessage msg2 = createTestMessageEmptyClock(SENDER_A, "bbb-msg", "Second");
 
-        // Should fall back to comparing message IDs
-        assertThrows(IllegalStateException.class, () -> comparator.compare(msg1, msg2),
-                "Messages without clocks should not be comparable");
+        // Should use message ID as final tiebreaker after sender comparison returns 0
+        int result = comparator.compare(msg1, msg2);
+        assertTrue(result < 0,
+                "Messages with empty clocks from same sender should use message ID as tiebreaker");
     }
 
     @Test
@@ -195,8 +197,8 @@ class CausalOrderComparatorTest {
                 clock);
     }
 
-    private ChatMessage createTestMessageNullClock(String senderId, String messageId, String content) {
-        // Create a message without a vector clock for edge case testing
+    private ChatMessage createTestMessageEmptyClock(String senderId, String messageId, String content) {
+        // Create a message with an empty vector clock for edge case testing
         return new ChatMessage(
                 messageId,
                 senderId,

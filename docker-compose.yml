@@ -10,7 +10,7 @@ services:
     networks:
       - p2p-network
     healthcheck:
-      test: [ "CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/1099' || exit 1" ]
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/1099' || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -21,7 +21,7 @@ services:
       context: .
       target: peer
     container_name: p2p-alice
-    command: [ "--username", "Alice", "--port", "5001", "--bootstrap", "bootstrap:1099" ]
+    command: ["--username", "Alice", "--port", "5001", "--bootstrap", "bootstrap:1099"]
     ports:
       - "5001:5001"
     networks:
@@ -36,7 +36,7 @@ services:
     build:
       context: .
       target: peer
-    command: [ "--username", "Bob", "--port", "5002", "--bootstrap", "bootstrap:1099" ]
+    command: ["--username", "Bob", "--port", "5002", "--bootstrap", "bootstrap:1099"]
     container_name: p2p-bob
     ports:
       - "5002:5002"
@@ -52,7 +52,7 @@ services:
     build:
       context: .
       target: peer
-    command: [ "--username", "Charlie", "--port", "5003", "--bootstrap", "bootstrap:1099" ]
+    command: ["--username", "Charlie", "--port", "5003", "--bootstrap", "bootstrap:1099"]
     container_name: p2p-charlie
     ports:
       - "5003:5003"
