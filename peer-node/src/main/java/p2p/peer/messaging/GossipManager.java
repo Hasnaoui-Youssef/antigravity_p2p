@@ -10,7 +10,6 @@ import p2p.peer.groups.GroupManager;
 
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +19,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 /**
  * Implements Cassandra-style gossip protocol with digest comparison.
@@ -129,7 +127,7 @@ public class GossipManager {
                 // Select random member to gossip with (including leader)
                 List<String> members = group.activeMembers().stream()
                         .map(User::userId)
-                        .filter(id -> !id.equals(localUser.userId())).collect(Collectors.toList());
+                        .filter(id -> !id.equals(localUser.userId())).toList();
 
                 if (members.isEmpty())
                     continue;
@@ -165,8 +163,6 @@ public class GossipManager {
             PeerService peerService = (PeerService) registry.lookup("PeerService");
             peerService.receiveMessage(gossip);
         } catch (Exception e) {
-            // System.err.println("[Gossip] Failed to gossip with " + target.getUsername() +
-            // ": " + e.getMessage());
         }
     }
 

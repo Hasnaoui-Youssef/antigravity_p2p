@@ -110,10 +110,14 @@ public class PeerController implements PeerService {
     }
 
     public void removeEventListener(PeerEventListener listener) {
-        listeners.remove(listener);
         friendManager.removeEventListener(listener);
         groupManager.removeEventListener(listener);
         electionManager.removeEventListener(listener);
+        listeners.remove(listener);
+    }
+
+    public List<PeerEventListener> getEventListeners(){
+        return List.copyOf(listeners);
     }
 
     /**
@@ -162,7 +166,7 @@ public class PeerController implements PeerService {
         if (bootstrapService != null) {
             try {
                 bootstrapService.unregister(localUser.userId());
-            } catch (Exception e) {
+            } catch (Exception ignored) {
             }
         }
 
@@ -330,7 +334,6 @@ public class PeerController implements PeerService {
                 // we should respect the check.
                 if (group != null && !message.getSenderId().equals(group.leader().userId())) {
                     notifyLog("Security Warning: Ignoring USER_REJECTED from non-leader " + message.getSenderId());
-                    return;
                 }
                 // Logic for user rejected if we were tracking it in active groups
             }

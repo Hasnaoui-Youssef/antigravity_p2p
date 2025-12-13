@@ -35,9 +35,10 @@ public final class FriendMessage extends Message {
                 UUID.randomUUID().toString(),
                 sender.userId(),
                 Instant.now().toEpochMilli(),
-                sender,
+                Objects.requireNonNull(sender),
                 messageType,
-                vectorClock);
+                Objects.requireNonNull(vectorClock)
+        );
     }
 
     public User getSender() {

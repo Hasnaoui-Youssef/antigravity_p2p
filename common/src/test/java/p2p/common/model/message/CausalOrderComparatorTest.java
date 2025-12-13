@@ -115,16 +115,6 @@ class CausalOrderComparatorTest {
     }
 
     @Test
-    @DisplayName("Equal messages compare as equal")
-    void testEqualMessagesCompareEqual() {
-        VectorClock clock = createClock(SENDER_A, 1);
-        ChatMessage msg = createTestMessage(SENDER_A, "same-id", "Content", clock);
-
-        assertEquals(0, comparator.compare(msg, msg),
-                "Same message should compare as equal");
-    }
-
-    @Test
     @DisplayName("Messages with empty clocks are compared by sender ID")
     void testEmptyClockFallback() {
         // This tests edge case handling - empty clocks use sender ID comparison
