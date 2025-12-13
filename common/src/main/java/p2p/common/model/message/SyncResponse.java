@@ -1,8 +1,9 @@
 package p2p.common.model.message;
 
-import p2p.common.model.MessageType;
+import p2p.common.model.MessageTopic;
 import p2p.common.vectorclock.VectorClock;
 
+import java.io.Serial;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -13,28 +14,31 @@ import java.util.UUID;
  * Response containing missing messages.
  */
 public final class SyncResponse extends Message {
+    @Serial
     private static final long serialVersionUID = 1L;
 
     private final String requestId;
     private final String groupId;
-    private final List<Message> missingMessages;
+    private final List<ChatMessage> missingMessages;
 
-    public SyncResponse(String messageId, String senderId, long timestamp, String requestId, String groupId, List<Message> missingMessages) {
-        super(messageId, senderId, timestamp, MessageType.SYNC_RESPONSE);
+    public SyncResponse(String messageId, String senderId, long timestamp, String requestId, String groupId,
+                        List<ChatMessage> missingMessages, VectorClock vectorClock) {
+        super(messageId, senderId, timestamp, MessageTopic.SYNC_RESPONSE, vectorClock);
         this.requestId = Objects.requireNonNull(requestId);
         this.groupId = Objects.requireNonNull(groupId);
-        this.missingMessages = Collections.unmodifiableList(Objects.requireNonNull(missingMessages));
+        this.missingMessages = List.copyOf(Objects.requireNonNull(missingMessages));
     }
 
-    public static SyncResponse create(String senderId, String requestId, String groupId, List<Message> missingMessages) {
+    public static SyncResponse create(String senderId, String requestId, String groupId,
+                                      List<ChatMessage> missingMessages, VectorClock vectorClock) {
         return new SyncResponse(
-            UUID.randomUUID().toString(),
-            senderId,
-            Instant.now().toEpochMilli(),
-            requestId,
-            groupId,
-            missingMessages
-        );
+                UUID.randomUUID().toString(),
+                senderId,
+                Instant.now().toEpochMilli(),
+                requestId,
+                groupId,
+                missingMessages,
+                vectorClock);
     }
 
     public String getRequestId() {
@@ -45,13 +49,13 @@ public final class SyncResponse extends Message {
         return groupId;
     }
 
-    public List<Message> getMissingMessages() {
+    public List<ChatMessage> getMissingMessages() {
         return missingMessages;
     }
 
     @Override
     public String toString() {
         return String.format("SyncResponse{id='%s', reqId='%s', sender='%s', group='%s', count=%d}",
-            messageId, requestId, senderId, groupId, missingMessages.size());
+                messageId, requestId, senderId, groupId, missingMessages.size());
     }
 }

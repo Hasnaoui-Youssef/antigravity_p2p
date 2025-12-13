@@ -14,7 +14,7 @@ tasks.withType<Jar> {
     manifest {
         attributes["Main-Class"] = "p2p.bootstrap.BootstrapServer"
     }
-    
+
     // To create a "fat jar" that includes all dependencies
     from(sourceSets.main.get().output)
     dependsOn(configurations.runtimeClasspath)

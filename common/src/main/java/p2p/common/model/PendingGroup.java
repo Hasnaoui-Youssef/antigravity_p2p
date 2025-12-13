@@ -1,9 +1,6 @@
-package p2p.peer.groups;
-
-import p2p.common.model.User;
+package p2p.common.model;
 
 import java.util.*;
-import java.util.concurrent.ScheduledFuture;
 
 /**
  * Represents a group in pending state awaiting invitation responses.
@@ -12,11 +9,9 @@ public class PendingGroup {
     private final String groupId;
     private final String groupName;
     private final User creator;
-    private final Map<String, User> potentialMembers; // userId -> User (all invited, excluding creator)
+    private final Map<String, User> potentialMembers; // userId -> User (all invited, including creator)
     private final Set<String> acceptedMemberIds; // Those who accepted
     private final Set<String> rejectedMemberIds; // Those who rejected
-    private final long creationTime;
-    private ScheduledFuture<?> timeoutTask;
 
     public PendingGroup(String groupId, String groupName, User creator, List<User> potentialMembers) {
         this.groupId = groupId;
@@ -24,11 +19,10 @@ public class PendingGroup {
         this.creator = creator;
         this.potentialMembers = new HashMap<>();
         for (User user : potentialMembers) {
-            this.potentialMembers.put(user.getUserId(), user);
+            this.potentialMembers.put(user.userId(), user);
         }
         this.acceptedMemberIds = new HashSet<>();
         this.rejectedMemberIds = new HashSet<>();
-        this.creationTime = System.currentTimeMillis();
     }
 
     public String getGroupId() {
@@ -59,20 +53,6 @@ public class PendingGroup {
         return new HashSet<>(rejectedMemberIds);
     }
 
-    public long getCreationTime() {
-        return creationTime;
-    }
-
-    public void setTimeoutTask(ScheduledFuture<?> task) {
-        this.timeoutTask = task;
-    }
-
-    public void cancelTimeout() {
-        if (timeoutTask != null && !timeoutTask.isDone()) {
-            timeoutTask.cancel(false);
-        }
-    }
-
     /**
      * Record an acceptance from a member.
      */
@@ -93,16 +73,14 @@ public class PendingGroup {
      * Check if all invited members have responded.
      */
     public boolean allResponded() {
-        int totalResponses = acceptedMemberIds.size() + rejectedMemberIds.size();
-        return totalResponses == potentialMembers.size();
+        return acceptedMemberIds.size() + rejectedMemberIds.size() == potentialMembers.size();
     }
 
     /**
      * Check if the group can be finalized (min 3 members total including creator).
      */
     public boolean canFinalize() {
-        // Creator (1) + accepted members (>= 2) = 3+ total
-        return acceptedMemberIds.size() >= 2;
+        return acceptedMemberIds.size() >= 3;
     }
 
     /**

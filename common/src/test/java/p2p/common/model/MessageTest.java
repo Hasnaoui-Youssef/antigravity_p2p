@@ -4,95 +4,94 @@ import p2p.common.vectorclock.VectorClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
-import p2p.common.model.message.DirectMessage;
-import p2p.common.model.message.Message;
-import p2p.common.model.MessageType;
-import p2p.common.model.User;
+import p2p.common.model.message.ChatMessage;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for DirectMessage model.
+ * Unit tests for ChatMessage model.
  */
 class MessageTest {
-    
+
     private User sender;
     private VectorClock clock;
-    
+
     @BeforeEach
     void setUp() {
         sender = User.create("Alice", "192.168.1.1", 5001);
         clock = new VectorClock();
-        clock.increment(sender.getUserId());
+        clock.increment(sender.userId());
     }
-    
+
     @Test
     @DisplayName("Create should generate unique message ID")
     void testCreate() {
-        DirectMessage msg1 = DirectMessage.create(sender, "receiver-id", "Hello", clock);
-        DirectMessage msg2 = DirectMessage.create(sender, "receiver-id", "Hi", clock);
-        
+        ChatMessage msg1 = ChatMessage.createDirect(sender, "receiver-id", "Hello", clock);
+        ChatMessage msg2 = ChatMessage.createDirect(sender, "receiver-id", "Hi", clock);
+
         assertNotNull(msg1.getMessageId());
         assertNotNull(msg2.getMessageId());
         assertNotEquals(msg1.getMessageId(), msg2.getMessageId());
     }
-    
+
     @Test
     @DisplayName("Create should set sender information correctly")
     void testCreateSenderInfo() {
-        DirectMessage msg = DirectMessage.create(sender, "receiver-id", "Test message", clock);
-        
-        assertEquals(sender.getUserId(), msg.getSenderId());
-        assertEquals(sender.getUsername(), msg.getSenderUsername());
-        assertEquals("receiver-id", msg.getReceiverId());
+        ChatMessage msg = ChatMessage.createDirect(sender, "receiver-id", "Test message", clock);
+
+        assertEquals(sender.userId(), msg.getSenderId());
+        assertEquals(sender.username(), msg.getSenderUsername());
+        assertEquals("receiver-id", msg.getTargetId());
         assertEquals("Test message", msg.getContent());
+        assertEquals(ChatMessage.ChatSubtopic.DIRECT, msg.getSubtopic());
     }
-    
+
     @Test
     @DisplayName("VectorClock should be cloned independently")
     void testVectorClockIndependence() {
-        DirectMessage msg = DirectMessage.create(sender, "receiver-id", "Test", clock);
-        
+        ChatMessage msg = ChatMessage.createDirect(sender, "receiver-id", "Test", clock);
+
         VectorClock msgClock = msg.getVectorClock();
-        clock.increment(sender.getUserId());
-        
+        clock.increment(sender.userId());
+
         // Original clock changed, message clock should not
-        assertEquals(2, clock.getTime(sender.getUserId()));
-        assertEquals(1, msgClock.getTime(sender.getUserId()));
+        assertEquals(2, clock.getTime(sender.userId()));
+        assert msgClock != null;
+        assertEquals(1, msgClock.getTime(sender.userId()));
     }
-    
+
     @Test
     @DisplayName("Timestamp should be set to current time")
     void testTimestamp() {
         long before = System.currentTimeMillis();
-        DirectMessage msg = DirectMessage.create(sender, "receiver-id", "Test", clock);
+        ChatMessage msg = ChatMessage.createDirect(sender, "receiver-id", "Test", clock);
         long after = System.currentTimeMillis();
-        
+
         assertTrue(msg.getTimestamp() >= before);
         assertTrue(msg.getTimestamp() <= after);
     }
-    
+
     @Test
     @DisplayName("Equals should compare by message ID")
     void testEquals() {
-        DirectMessage msg1 = new DirectMessage("msg123", sender.getUserId(), sender.getUsername(), 
-                                   "receiver", "content1", 1000, clock);
-        DirectMessage msg2 = new DirectMessage("msg123", sender.getUserId(), sender.getUsername(), 
-                                   "receiver", "content2", 2000, clock); // Different content but same ID
-        DirectMessage msg3 = new DirectMessage("msg456", sender.getUserId(), sender.getUsername(), 
-                                   "receiver", "content1", 1000, clock);
-        
+        ChatMessage msg1 = new ChatMessage("msg123", sender.userId(), sender.username(),
+                "receiver", "content1", 1000, ChatMessage.ChatSubtopic.DIRECT, clock);
+        ChatMessage msg2 = new ChatMessage("msg123", sender.userId(), sender.username(),
+                "receiver", "content2", 2000, ChatMessage.ChatSubtopic.DIRECT, clock); // Different content but same ID
+        ChatMessage msg3 = new ChatMessage("msg456", sender.userId(), sender.username(),
+                "receiver", "content1", 1000, ChatMessage.ChatSubtopic.DIRECT, clock);
+
         assertEquals(msg1, msg2);
         assertNotEquals(msg1, msg3);
     }
-    
+
     @Test
-    @DisplayName("ToString should include sender and content")
+    @DisplayName("ToString should include sender and content length")
     void testToString() {
-        DirectMessage msg = DirectMessage.create(sender, "receiver-id", "Hello!", clock);
+        ChatMessage msg = ChatMessage.createDirect(sender, "receiver-id", "Hello!", clock);
         String str = msg.toString();
-        
-        assertTrue(str.contains(sender.getUsername()));
-        assertTrue(str.contains("Hello!"));
+
+        assertTrue(str.contains(sender.username()));
+        assertTrue(str.contains("contentLength"));
     }
 }

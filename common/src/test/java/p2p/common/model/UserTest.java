@@ -16,9 +16,9 @@ class UserTest {
         User user1 = User.create("Alice", "192.168.1.1", 5001);
         User user2 = User.create("Bob", "192.168.1.2", 5002);
         
-        assertNotNull(user1.getUserId());
-        assertNotNull(user2.getUserId());
-        assertNotEquals(user1.getUserId(), user2.getUserId());
+        assertNotNull(user1.userId());
+        assertNotNull(user2.userId());
+        assertNotEquals(user1.userId(), user2.userId());
     }
     
     @Test
@@ -70,9 +70,9 @@ class UserTest {
     void testGetters() {
         User user = new User("id123", "Alice", "192.168.1.1", 5001);
         
-        assertEquals("id123", user.getUserId());
-        assertEquals("Alice", user.getUsername());
-        assertEquals("192.168.1.1", user.getIpAddress());
-        assertEquals(5001, user.getRmiPort());
+        assertEquals("id123", user.userId());
+        assertEquals("Alice", user.username());
+        assertEquals("192.168.1.1", user.ipAddress());
+        assertEquals(5001, user.rmiPort());
     }
 }

@@ -1,6 +1,7 @@
 package p2p.bootstrap;
 
 import p2p.common.model.User;
+import p2p.common.rmi.UsernameAlreadyExistsException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ class UserRegistryTest {
     void testAddUser() {
         registry.addUser(alice);
         
-        User retrieved = registry.getUser(alice.getUserId());
+        User retrieved = registry.getUser(alice.userId());
         assertNotNull(retrieved);
         assertEquals(alice, retrieved);
     }
@@ -45,9 +46,9 @@ class UserRegistryTest {
     @DisplayName("RemoveUser should unregister user")
     void testRemoveUser() {
         registry.addUser(alice);
-        registry.removeUser(alice.getUserId());
+        registry.removeUser(alice.userId());
         
-        assertNull(registry.getUser(alice.getUserId()));
+        assertNull(registry.getUser(alice.userId()));
     }
     
     @Test
@@ -56,10 +57,10 @@ class UserRegistryTest {
         registry.addUser(alice);
         
         Thread.sleep(100);
-        registry.updateHeartbeat(alice.getUserId());
+        registry.updateHeartbeat(alice.userId());
         
         // User should still exist
-        assertNotNull(registry.getUser(alice.getUserId()));
+        assertNotNull(registry.getUser(alice.userId()));
     }
     
     @Test
@@ -145,9 +146,90 @@ class UserRegistryTest {
         // For now, we'll just test that the cleanup thread exists
         
         registry.addUser(alice);
-        assertNotNull(registry.getUser(alice.getUserId()));
+        assertNotNull(registry.getUser(alice.userId()));
         
         // In production, after 30+ seconds with no heartbeat, user would be removed
         // But we won't wait that long in tests
+    }
+
+    @Test
+    @DisplayName("registerUser should succeed for unique username")
+    void testRegisterUserUniqueUsername() throws UsernameAlreadyExistsException {
+        registry.registerUser(alice);
+        
+        User retrieved = registry.getUser(alice.userId());
+        assertNotNull(retrieved);
+        assertEquals(alice, retrieved);
+    }
+
+    @Test
+    @DisplayName("registerUser should throw exception for duplicate username")
+    void testRegisterUserDuplicateUsername() throws UsernameAlreadyExistsException {
+        registry.registerUser(alice);
+        
+        // Create another user with the same username but different userId
+        User aliceDuplicate = User.create("Alice", "192.168.1.100", 6001);
+        
+        assertThrows(UsernameAlreadyExistsException.class, () -> {
+            registry.registerUser(aliceDuplicate);
+        });
+    }
+
+    @Test
+    @DisplayName("registerUser should allow same user to re-register")
+    void testRegisterUserSameUserReregister() throws UsernameAlreadyExistsException {
+        registry.registerUser(alice);
+        
+        // Same user (same userId) should be able to re-register
+        assertDoesNotThrow(() -> registry.registerUser(alice));
+    }
+
+    @Test
+    @DisplayName("username check should be case-insensitive")
+    void testDuplicateUsernameCaseInsensitive() throws UsernameAlreadyExistsException {
+        registry.registerUser(alice);
+        
+        // Create another user with same username different case
+        User aliceUpperCase = User.create("ALICE", "192.168.1.100", 6001);
+        
+        assertThrows(UsernameAlreadyExistsException.class, () -> {
+            registry.registerUser(aliceUpperCase);
+        });
+    }
+
+    @Test
+    @DisplayName("isUsernameAvailable should return true for available username")
+    void testIsUsernameAvailableTrue() {
+        assertTrue(registry.isUsernameAvailable("Alice"));
+    }
+
+    @Test
+    @DisplayName("isUsernameAvailable should return false for taken username")
+    void testIsUsernameAvailableFalse() throws UsernameAlreadyExistsException {
+        registry.registerUser(alice);
+        
+        assertFalse(registry.isUsernameAvailable("Alice"));
+        assertFalse(registry.isUsernameAvailable("alice")); // case insensitive
+        assertFalse(registry.isUsernameAvailable("ALICE")); // case insensitive
+    }
+
+    @Test
+    @DisplayName("removeUser should free up the username")
+    void testRemoveUserFreesUsername() throws UsernameAlreadyExistsException {
+        registry.registerUser(alice);
+        assertFalse(registry.isUsernameAvailable("Alice"));
+        
+        registry.removeUser(alice.userId());
+        assertTrue(registry.isUsernameAvailable("Alice"));
+        
+        // Now another user should be able to register with the same username
+        User newAlice = User.create("Alice", "192.168.1.100", 6001);
+        assertDoesNotThrow(() -> registry.registerUser(newAlice));
+    }
+
+    @Test
+    @DisplayName("isUsernameAvailable should return false for null")
+    void testIsUsernameAvailableNull() {
+        assertFalse(registry.isUsernameAvailable(null));
     }
 }

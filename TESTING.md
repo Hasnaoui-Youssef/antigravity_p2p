@@ -36,11 +36,13 @@ This test suite provides comprehensive coverage for the Phase 1 P2P messaging sy
 | **Total** | **5** | **10** | **15** |
 
 **Test Results:**
+
 - ✅ All unit tests passing
 - ✅ All integration tests passing (with programmatic API)
 - ✅ 100% of critical paths covered
 
 **How to Run All Tests:**
+
 ```bash
 # All tests
 ./gradlew test
@@ -55,11 +57,13 @@ This test suite provides comprehensive coverage for the Phase 1 P2P messaging sy
 ## Running Tests
 
 ### All Unit Tests
+
 ```bash
 ./gradlew test --tests '*Test' --tests '!*IntegrationTest'
 ```
 
 ### Specific Module Tests
+
 ```bash
 # Common module tests (VectorClock, User, Message)
 ./gradlew :common:test
@@ -72,7 +76,10 @@ This test suite provides comprehensive coverage for the Phase 1 P2P messaging sy
 ```
 
 ### Integration Tests
-> **Note**: Integration tests have limitations when run via Gradle due to RMI registry port binding in single-JVM environments. They are provided as reference implementations and work best when run individually or in separate JVM instances.
+
+> **Note**: Integration tests have limitations when run via Gradle due to RMI registry port binding in single-JVM
+environments. They are provided as reference implementations and work best when run individually or in separate JVM
+instances.
 
 ```bash
 # Run single integration test
@@ -84,6 +91,7 @@ This test suite provides comprehensive coverage for the Phase 1 P2P messaging sy
 ### Unit Tests (✅ All Passing)
 
 #### VectorClockTest (10 tests)
+
 - ✅ Increment operations
 - ✅ Update with merge
 - ✅ Happens-before detection
@@ -94,6 +102,7 @@ This test suite provides comprehensive coverage for the Phase 1 P2P messaging sy
 - ✅ Equality comparison
 
 #### UserTest (6 tests)
+
 - ✅ User creation with unique IDs
 - ✅ Constructor validation
 - ✅ Equality by user ID
@@ -102,6 +111,7 @@ This test suite provides comprehensive coverage for the Phase 1 P2P messaging sy
 - ✅ Getter methods
 
 #### MessageTest (6 tests)
+
 - ✅ Message creation with unique IDs
 - ✅ Sender information
 - ✅ Vector clock independence
@@ -110,6 +120,7 @@ This test suite provides comprehensive coverage for the Phase 1 P2P messaging sy
 - ✅ ToString format
 
 #### UserRegistryTest (9 tests)
+
 - ✅ Add user
 - ✅ Remove user
 - ✅ Update heartbeat
@@ -121,6 +132,7 @@ This test suite provides comprehensive coverage for the Phase 1 P2P messaging sy
 - ✅ Stale user cleanup
 
 #### FriendManagerTest (10 tests)
+
 - ✅ Handle friend request
 - ✅ Prevent duplicate requests
 - ✅ Ignore request if already friends
@@ -135,7 +147,9 @@ This test suite provides comprehensive coverage for the Phase 1 P2P messaging sy
 ### Integration Tests (⚠️ Reference Implementation)
 
 #### FriendRequestIntegrationTest (5 tests)
+
 Tests complete friend request flow with RMI communication:
+
 - Alice sends friend request to Bob
 - Bob accepts Alice's friend request
 - Vector clocks synchronize during flow
@@ -143,7 +157,9 @@ Tests complete friend request flow with RMI communication:
 - Cannot send request if already friends
 
 #### MessagingIntegrationTest (6 tests)
+
 Tests peer-to-peer messaging with causality:
+
 - Alice sends message to Bob
 - Bidirectional messaging
 - Vector clocks update on message exchange
@@ -154,6 +170,7 @@ Tests peer-to-peer messaging with causality:
 ## Test Results
 
 ### Latest Run
+
 ```
 BUILD SUCCESSFUL
 21 tests completed, 12 unit tests passed
@@ -172,6 +189,7 @@ Integration Tests:
 ## Manual Testing
 
 For comprehensive end-to-end testing, follow the scenarios in `walkthrough.md`:
+
 1. Start bootstrap server
 2. Start multiple peer instances
 3. Test friend request flow
@@ -180,7 +198,9 @@ For comprehensive end-to-end testing, follow the scenarios in `walkthrough.md`:
 
 ## Known Limitations
 
-**Integration Tests**: RMI registry binding conflicts occur when multiple tests try to create registries on the same port in a single JVM. This is a known limitation of RMI testing. Solutions:
+**Integration Tests**: RMI registry binding conflicts occur when multiple tests try to create registries on the same
+port in a single JVM. This is a known limitation of RMI testing. Solutions:
+
 - Run integration tests individually
 - Use forked test execution (separate JVMs per test class)
 - Perform manual end-to-end testing as documented in walkthrough

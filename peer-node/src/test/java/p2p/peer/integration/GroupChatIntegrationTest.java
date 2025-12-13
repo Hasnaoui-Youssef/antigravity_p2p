@@ -1,12 +1,24 @@
 package p2p.peer.integration;
 
+import p2p.peer.util.MultiPeerGroupEventWaiter;
+import p2p.peer.util.TestEvent;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
 import org.junit.jupiter.api.*;
 import p2p.bootstrap.BootstrapServiceImpl;
 import p2p.bootstrap.UserRegistry;
 import p2p.common.model.Group;
-import p2p.common.model.message.GroupInvitationResponse;
+import p2p.common.model.GroupEvent;
+import p2p.common.model.message.ChatMessage;
+import p2p.common.model.message.GroupInvitationMessage;
+import p2p.common.model.message.Message;
+import p2p.peer.PeerEventListener;
 import p2p.common.rmi.BootstrapService;
+import p2p.common.rmi.PeerService;
 import p2p.peer.PeerController;
+import p2p.common.model.User;
 
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
@@ -21,7 +33,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests invitation accept/reject, timeouts, messaging, leader election, gossip,
  * and sync.
  */
+
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class GroupChatIntegrationTest {
 
     private static final int BOOTSTRAP_PORT = 14099;
@@ -51,11 +65,7 @@ class GroupChatIntegrationTest {
     @AfterAll
     void teardownBootstrap() throws Exception {
         if (bootstrapService != null) {
-            try {
-                UnicastRemoteObject.unexportObject(bootstrapService, true);
-            } catch (Exception e) {
-                // Ignore
-            }
+            UnicastRemoteObject.unexportObject(bootstrapService, true);
         }
 
         if (bootstrapRegistry != null) {
@@ -96,27 +106,144 @@ class GroupChatIntegrationTest {
     }
 
     private void makeFriends(PeerController p1, PeerController p2) throws Exception {
-        p1.sendFriendRequest(p2.getLocalUser().getUsername());
-        Thread.sleep(100);
-        p2.acceptFriendRequest(p1.getLocalUser().getUsername());
-        Thread.sleep(100);
+        p1.sendFriendRequest(p2.getLocalUser().username());
+
+        // Wait for request to arrive
+        long deadline = System.currentTimeMillis() + 2000;
+        while (System.currentTimeMillis() < deadline) {
+            if (p2.getPendingRequests().stream()
+                    .anyMatch(u -> u.username().equals(p1.getLocalUser().username()))) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+
+        p2.acceptFriendRequest(p1.getLocalUser().username());
+
+        // Wait for friendship to be established on both sides
+        deadline = System.currentTimeMillis() + 2000;
+        while (System.currentTimeMillis() < deadline) {
+            boolean p1HasP2 = p1.getFriends().stream()
+                    .anyMatch(u -> u.username().equals(p2.getLocalUser().username()));
+            boolean p2HasP1 = p2.getFriends().stream()
+                    .anyMatch(u -> u.username().equals(p1.getLocalUser().username()));
+            if (p1HasP2 && p2HasP1) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+    }
+
+    /**
+     * Add an auto-accept listener to a peer that accepts all group invitations
+     * automatically.
+     */
+    private void autoAcceptInvitations(PeerController peer) {
+        peer.addEventListener(new PeerEventListener() {
+            @Override
+            public void onGroupInvitation(GroupInvitationMessage request) {
+                try {
+                    peer.acceptGroupInvitation(request.getGroupId());
+                } catch (Exception e) {
+                    System.err.println("Failed to auto-accept invitation: " + e.getMessage());
+                }
+            }
+
+            @Override
+            public void onFriendRequest(User requester) {
+            }
+
+            @Override
+            public void onFriendRequestAccepted(User accepter) {
+            }
+
+            @Override
+            public void onMessageReceived(Message message) {
+            }
+
+            @Override
+            public void onGroupEvent(String groupId, GroupEvent eventType, String message) {
+            }
+
+            @Override
+            public void onLeaderElected(String groupId, String leaderId, long epoch) {
+            }
+
+            @Override
+            public void onError(String message, Throwable t) {
+            }
+
+            @Override
+            public void onLog(String message) {
+            }
+        });
+    }
+
+    /**
+     * Add a reject listener to a peer that rejects all group invitations
+     * automatically.
+     */
+    private void autoRejectInvitations(PeerController peer) {
+        peer.addEventListener(new PeerEventListener() {
+            @Override
+            public void onGroupInvitation(GroupInvitationMessage request) {
+                try {
+                    peer.rejectGroupInvitation(request.getGroupId());
+                } catch (Exception e) {
+                    System.err.println("Failed to auto-reject invitation: " + e.getMessage());
+                }
+            }
+
+            @Override
+            public void onFriendRequest(User requester) {
+            }
+
+            @Override
+            public void onFriendRequestAccepted(User accepter) {
+            }
+
+            @Override
+            public void onMessageReceived(Message message) {
+            }
+
+            @Override
+            public void onGroupEvent(String groupId, GroupEvent eventType, String message) {
+            }
+
+            @Override
+            public void onLeaderElected(String groupId, String leaderId, long epoch) {
+            }
+
+            @Override
+            public void onError(String message, Throwable t) {
+            }
+
+            @Override
+            public void onLog(String message) {
+            }
+        });
     }
 
     // ==========================================================================
     // TEST 1: Successful group creation with invitations accepted
     // ==========================================================================
 
+    // ==========================================================================
+    // TEST 1: Successful group creation with invitations accepted
+    // ==========================================================================
+
     @Test
-    @DisplayName("1. Successful group creation with invitation acceptance and messaging")
+    @Order(1)
+    @DisplayName("Successful group creation with invitation acceptance and messaging")
     void testSuccessfulGroupCreationAndMessaging() throws Exception {
         PeerController alice = createPeer("Alice", getNextPort());
         PeerController bob = createPeer("Bob", getNextPort());
         PeerController charlie = createPeer("Charlie", getNextPort());
 
         // Set auto-accept handlers for all
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
 
         // Establish friendships (required for group invitations)
         makeFriends(alice, bob);
@@ -126,20 +253,20 @@ class GroupChatIntegrationTest {
         // Alice creates group and sends invitations
         Group tempGroup = alice.createGroup("ChatGroup", List.of("Bob", "Charlie"));
         assertNotNull(tempGroup);
-        assertEquals("ChatGroup", tempGroup.getName());
+        assertEquals("ChatGroup", tempGroup.name());
 
         // Wait for invitations to be sent and auto-accepted (3s timeout + processing)
         Thread.sleep(4000);
 
         // Verify group finalized on Alice's side
         assertEquals(1, alice.getGroups().size(), "Alice should have 1 finalized group");
-        String groupId = tempGroup.getGroupId();
+        String groupId = tempGroup.groupId();
         Group finalizedGroup = alice.getGroup(groupId);
         assertNotNull(finalizedGroup, "Alice should have the finalized group");
 
         // Verify group structure: Alice is leader, Bob & Charlie are members
-        assertEquals(alice.getLocalUser().getUserId(), finalizedGroup.getLeaderId());
-        assertEquals(2, finalizedGroup.getMembers().size()); // Bob & Charlie (Alice is leader, not in members)
+        assertEquals(alice.getLocalUser().userId(), finalizedGroup.leader().userId());
+        assertEquals(2, finalizedGroup.members().size()); // Bob & Charlie (Alice is leader, not in members)
 
         // IMPORTANT: Verify Bob and Charlie also have the group
         assertEquals(1, bob.getGroups().size(), "Bob should have received the finalized group");
@@ -152,20 +279,25 @@ class GroupChatIntegrationTest {
         Thread.sleep(500);
 
         // Verify message received by all
-        assertTrue(alice.getGroupManager().getMessages(groupId).size() > 0);
-        assertTrue(bob.getGroupManager().getMessages(groupId).size() > 0);
-        assertTrue(charlie.getGroupManager().getMessages(groupId).size() > 0);
+        assertFalse(alice.getGroupManager().getMessages(groupId).isEmpty());
+        assertFalse(bob.getGroupManager().getMessages(groupId).isEmpty());
+        assertFalse(charlie.getGroupManager().getMessages(groupId).isEmpty());
 
         System.out.println(
-                "[TEST] ✓ Test 1 passed: Group created successfully with invitations and all members can message");
+                "[TEST]  Test 1 passed: Group created successfully with invitations and all members can message");
     }
 
     // ==========================================================================
     // TEST 2: Group creation fails when one member rejects invitation
     // ==========================================================================
 
+    // ==========================================================================
+    // TEST 2: Group creation fails when one member rejects invitation
+    // ==========================================================================
+
     @Test
-    @DisplayName("2. Group creation fails when one member rejects invitation")
+    @Order(2)
+    @DisplayName("Group creation fails when one member rejects invitation")
     void testGroupCreationWithRejection() throws Exception {
         PeerController alice = createPeer("Alice", getNextPort());
         PeerController bob = createPeer("Bob", getNextPort());
@@ -175,9 +307,9 @@ class GroupChatIntegrationTest {
         makeFriends(alice, charlie);
 
         // Set acceptance behavior: Bob accepts, Charlie rejects
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED); // Bob accepts
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.REJECTED); // Charlie REJECTS
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob); // Bob accepts
+        autoRejectInvitations(charlie); // Charlie REJECTS
 
         // Alice creates group
         alice.createGroup("FailGroup", List.of("Bob", "Charlie"));
@@ -193,15 +325,20 @@ class GroupChatIntegrationTest {
         assertEquals(0, bob.getGroups().size(), "Bob should not have group either");
         assertEquals(0, charlie.getGroups().size(), "Charlie rejected, should not have group");
 
-        System.out.println("[TEST] ✓ Test 2 passed: Group correctly dissolved when member rejects");
+        System.out.println("[TEST]  Test 2 passed: Group correctly dissolved when member rejects");
     }
 
     // ==========================================================================
     // TEST 3: Invitation timeout (no handler set = default reject)
     // ==========================================================================
 
+    // ==========================================================================
+    // TEST 3: Invitation timeout (no handler set = default reject)
+    // ==========================================================================
+
     @Test
-    @DisplayName("3. Group creation fails when invitee has no handler (times out)")
+    @Order(3)
+    @DisplayName("Group creation fails when invitee has no handler (times out)")
     void testInvitationTimeout() throws Exception {
         PeerController alice = createPeer("Alice", getNextPort());
         PeerController bob = createPeer("Bob", getNextPort());
@@ -212,9 +349,9 @@ class GroupChatIntegrationTest {
 
         // Set handlers: Alice and Bob have handlers, Charlie doesn't (will default
         // reject)
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.REJECTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoRejectInvitations(charlie);
 
         // Alice creates group
         alice.createGroup("TimeoutGroup", List.of("Bob", "Charlie"));
@@ -227,15 +364,20 @@ class GroupChatIntegrationTest {
         assertEquals(0, bob.getGroups().size(), "Bob should not have group");
         assertEquals(0, charlie.getGroups().size(), "Charlie should not have group");
 
-        System.out.println("[TEST] ✓ Test 3: Default rejection works when no handler set");
+        System.out.println("[TEST]  Test 3: Default rejection works when no handler set");
     }
 
     // ==========================================================================
     // TEST 4: Minimum group size validation
     // ==========================================================================
 
+    // ==========================================================================
+    // TEST 4: Minimum group size validation
+    // ==========================================================================
+
     @Test
-    @DisplayName("4. Group creation requires minimum 3 members (creator + 2)")
+    @Order(4)
+    @DisplayName("Group creation requires minimum 3 members (creator + 2)")
     void testMinimumGroupSize() throws Exception {
         PeerController alice = createPeer("Alice", getNextPort());
         PeerController bob = createPeer("Bob", getNextPort());
@@ -250,24 +392,29 @@ class GroupChatIntegrationTest {
             assertTrue(e.getMessage().contains("at least 2"), "Error should mention minimum requirement");
         }
 
-        System.out.println("[TEST] ✓ Test 4: Minimum group size validation works");
+        System.out.println("[TEST]  Test 4: Minimum group size validation works");
     }
 
     // ==========================================================================
     // TEST 5: Group auto-dissolution when falling below minimum size
     // ==========================================================================
 
+    // ==========================================================================
+    // TEST 5: Group auto-dissolution when falling below minimum size
+    // ==========================================================================
+
     @Test
-    @DisplayName("5. Group auto-dissolves when only 2 members remain")
+    @Order(5)
+    @DisplayName("Group auto-dissolves when only 2 members remain")
     void testGroupAutoDissolution() throws Exception {
         PeerController alice = createPeer("Alice", getNextPort());
         PeerController bob = createPeer("Bob", getNextPort());
         PeerController charlie = createPeer("Charlie", getNextPort());
 
         // Set all as auto-accept
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
 
         makeFriends(alice, bob);
         makeFriends(alice, charlie);
@@ -278,7 +425,7 @@ class GroupChatIntegrationTest {
         Thread.sleep(4000); // Wait for finalization
 
         assertEquals(1, alice.getGroups().size(), "Group should be finalized");
-        String groupId = tempGroup.getGroupId();
+        String groupId = tempGroup.groupId();
 
         // Verify all have the group
         assertEquals(1, bob.getGroups().size());
@@ -286,7 +433,7 @@ class GroupChatIntegrationTest {
 
         // Verify Alice is initial leader
         Group aliceGroup = alice.getGroup(groupId);
-        assertEquals(alice.getLocalUser().getUserId(), aliceGroup.getLeaderId());
+        assertEquals(alice.getLocalUser().userId(), aliceGroup.leader().userId());
 
         // Alice (leader) disconnects - leaves only 2 members
         alice.stop();
@@ -301,15 +448,20 @@ class GroupChatIntegrationTest {
         assertNull(charlie.getGroup(groupId),
                 "Charlie's group should be dissolved (only 2 members left)");
 
-        System.out.println("[TEST] ✓ Test 5: Group auto-dissolution when below minimum size");
+        System.out.println("[TEST]  Test 5: Group auto-dissolution when below minimum size");
     }
 
     // ==========================================================================
     // TEST 6: Leader election with sufficient members (6-person group)
     // ==========================================================================
 
+    // ==========================================================================
+    // TEST 6: Leader election with sufficient members (6-person group)
+    // ==========================================================================
+
     @Test
-    @DisplayName("6. New leader elected when current leader disconnects (6-person group)")
+    @Order(6)
+    @DisplayName("New leader elected when current leader disconnects (6-person group)")
     void testLeaderElectionLargeGroup() throws Exception {
         // Create 6 peers
         PeerController alice = createPeer("Alice", getNextPort());
@@ -319,13 +471,15 @@ class GroupChatIntegrationTest {
         PeerController eve = createPeer("Eve", getNextPort());
         PeerController frank = createPeer("Frank", getNextPort());
 
+        List<PeerController> allPeers = List.of(alice, bob, charlie, david, eve, frank);
+
         // Set all as auto-accept
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        david.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        eve.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        frank.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+        autoAcceptInvitations(david);
+        autoAcceptInvitations(eve);
+        autoAcceptInvitations(frank);
 
         // Create friendships (Alice with all others)
         makeFriends(alice, bob);
@@ -345,89 +499,91 @@ class GroupChatIntegrationTest {
         Group tempGroup = alice.createGroup("LargeElectionGroup",
                 List.of("Bob", "Charlie", "David", "Eve", "Frank"));
 
-        String groupId = tempGroup.getGroupId();
+        String groupId = tempGroup.groupId();
 
-        // Use polling for all peers to receive the group
-        assertTrue(bob.waitForGroup(groupId, 10000, 200), "Bob should receive group");
-        assertTrue(charlie.waitForGroup(groupId, 10000, 200), "Charlie should receive group");
-        assertTrue(david.waitForGroup(groupId, 10000, 200), "David should receive group");
-        assertTrue(eve.waitForGroup(groupId, 10000, 200), "Eve should receive group");
-        assertTrue(frank.waitForGroup(groupId, 10000, 200), "Frank should receive group");
+        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(
+                groupId, TestEvent.GROUP_CREATED, allPeers);
 
-        // Verify all have the group
-        assertEquals(1, alice.getGroups().size(), "Alice should have group");
-        assertEquals(1, bob.getGroups().size(), "Bob should have group");
-        assertEquals(1, charlie.getGroups().size(), "Charlie should have group");
-        assertEquals(1, david.getGroups().size(), "David should have group");
-        assertEquals(1, eve.getGroups().size(), "Eve should have group");
-        assertEquals(1, frank.getGroups().size(), "Frank should have group");
+        try {
+            boolean success = groupCreationWaiter.await(10, TimeUnit.SECONDS);
+            if (!success) {
+                List<String> pending = groupCreationWaiter.getPendingPeers();
+                fail("Timeout waiting for group creation. Pending peers: " + pending);
+            }
+            allPeers.forEach(
+                    p -> assertEquals(1, p.getGroups().size(), p.getLocalUser().username() + " should have group"));
+        } finally {
+            groupCreationWaiter.cleanup();
+        }
 
         // Verify Alice is initial leader
         Group aliceGroup = alice.getGroup(groupId);
-        String oldLeaderId = alice.getLocalUser().getUserId();
-        assertEquals(oldLeaderId, aliceGroup.getLeaderId());
+        String oldLeaderId = alice.getLocalUser().userId();
+        assertEquals(oldLeaderId, aliceGroup.leader().userId());
 
         // Alice disconnects
         alice.stop();
         peers.remove(alice);
 
-        // Use polling to wait for new leader election
-        assertTrue(bob.waitForNewLeader(groupId, oldLeaderId, 15000, 300),
-                "Bob should see new leader elected");
+        // Use MultiPeerGroupEventWaiter to wait for LEADER_ELECTED event
+        // We expect 5 peers (Bob, Charlie, David, Eve, Frank) to see the new leader
+        List<PeerController> remainingPeers = List.of(bob, charlie, david, eve, frank);
+        MultiPeerGroupEventWaiter leaderElectionWaiter = new MultiPeerGroupEventWaiter(
+                groupId, TestEvent.LEADER_ELECTED, remainingPeers);
 
-        // Remaining 5 members should have elected a new leader
-        Group bobGroup = bob.getGroup(groupId);
-        Group charlieGroup = charlie.getGroup(groupId);
-        Group davidGroup = david.getGroup(groupId);
-        Group eveGroup = eve.getGroup(groupId);
-        Group frankGroup = frank.getGroup(groupId);
+        try {
+            // Wait up to 30 seconds for election to complete (gossip can be slow)
+            boolean success = leaderElectionWaiter.await(30, TimeUnit.SECONDS);
 
-        // All should still have the group (not dissolved - 5 members remain)
-        assertNotNull(bobGroup, "Bob should still have group");
-        assertNotNull(charlieGroup, "Charlie should still have group");
-        assertNotNull(davidGroup, "David should still have group");
-        assertNotNull(eveGroup, "Eve should still have group");
-        assertNotNull(frankGroup, "Frank should still have group");
+            if (!success) {
+                List<String> pending = leaderElectionWaiter.getPendingPeers();
+                fail("Timeout waiting for leader election. Pending peers: " + pending);
+            }
 
-        // New leader should NOT be Alice
-        assertNotEquals(oldLeaderId, bobGroup.getLeaderId(),
-                "Bob's group should have new leader");
-        assertNotEquals(oldLeaderId, charlieGroup.getLeaderId(),
-                "Charlie's group should have new leader");
+            // Verify all agreed on the SAME leader
+            User newLeader = bob.getGroup(groupId).leader();
+            assertNotEquals(oldLeaderId, newLeader.userId(), "Should have new leader");
 
-        // All should agree on the same new leader
-        String newLeader = bobGroup.getLeaderId();
-        assertEquals(newLeader, charlieGroup.getLeaderId(),
-                "Bob and Charlie should agree on new leader");
-        assertEquals(newLeader, davidGroup.getLeaderId(),
-                "David should agree on new leader");
-        assertEquals(newLeader, eveGroup.getLeaderId(),
-                "Eve should agree on new leader");
-        assertEquals(newLeader, frankGroup.getLeaderId(),
-                "Frank should agree on new leader");
+            for (PeerController peer : remainingPeers) {
+                Group g = peer.getGroup(groupId);
+                assertNotNull(g, peer.getLocalUser().username() + " should still have the group");
+                assertEquals(newLeader.userId(), g.leader().userId(),
+                        peer.getLocalUser().username() + " should agree on new leader");
+            }
+
+            System.out.println("[TEST]  Test 6: Leader election completed successfully with 5 remaining members");
+            System.out.println("[TEST] New leader: "
+                    + newLeader.username());
+
+        } finally {
+            leaderElectionWaiter.cleanup();
+        }
 
         // Verify epoch was incremented
-        assertTrue(bobGroup.getEpoch() > 0, "Epoch should be incremented after election");
-
-        System.out.println("[TEST] ✓ Test 6: Leader election completed successfully with 5 remaining members");
-        System.out.println("[TEST] New leader: " + newLeader);
+        Group bobGroup = bob.getGroup(groupId);
+        assertTrue(bobGroup.epoch() > 0, "Epoch should be incremented after election");
     }
 
     // ==========================================================================
     // TEST 7: Concurrent group messaging
     // ==========================================================================
 
+    // ==========================================================================
+    // TEST 7: Concurrent group messaging
+    // ==========================================================================
+
     @Test
-    @DisplayName("7. Multiple members can send messages concurrently")
+    @Order(7)
+    @DisplayName("Multiple members can send messages concurrently")
     void testConcurrentMessaging() throws Exception {
         PeerController alice = createPeer("Alice", getNextPort());
         PeerController bob = createPeer("Bob", getNextPort());
         PeerController charlie = createPeer("Charlie", getNextPort());
 
         // Set all as auto-accept
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
 
         makeFriends(alice, bob);
         makeFriends(alice, charlie);
@@ -437,14 +593,13 @@ class GroupChatIntegrationTest {
         Thread.sleep(4000);
 
         assertEquals(1, alice.getGroups().size());
-        String groupId = tempGroup.getGroupId();
+        String groupId = tempGroup.groupId();
 
         // All three send messages concurrently
         Thread t1 = new Thread(() -> {
             try {
                 for (int i = 0; i < 5; i++) {
                     alice.sendGroupMessage(groupId, "Alice-" + i);
-                    Thread.sleep(50);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -455,7 +610,6 @@ class GroupChatIntegrationTest {
             try {
                 for (int i = 0; i < 5; i++) {
                     bob.sendGroupMessage(groupId, "Bob-" + i);
-                    Thread.sleep(50);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -466,7 +620,6 @@ class GroupChatIntegrationTest {
             try {
                 for (int i = 0; i < 5; i++) {
                     charlie.sendGroupMessage(groupId, "Charlie-" + i);
-                    Thread.sleep(50);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -480,26 +633,46 @@ class GroupChatIntegrationTest {
         t2.join();
         t3.join();
 
-        Thread.sleep(2000); // Wait for message propagation
+        Thread.sleep(1000); // Wait for message propagation
 
         // Each should have received messages from all
         int aliceCount = alice.getGroupManager().getMessages(groupId).size();
         int bobCount = bob.getGroupManager().getMessages(groupId).size();
         int charlieCount = charlie.getGroupManager().getMessages(groupId).size();
+        Function<String, String> groupMessagesContentForUser = (String name) -> switch (name) {
+            case "Alice" -> alice.getGroupManager().getMessages(groupId).stream().map(ChatMessage::getContent)
+                    .collect(Collectors.joining(", "));
+            case "Bob" -> bob.getGroupManager().getMessages(groupId).stream().map(ChatMessage::getContent)
+                    .collect(Collectors.joining(", "));
+            case "Charlie" -> charlie.getGroupManager().getMessages(groupId).stream().map(ChatMessage::getContent)
+                    .collect(Collectors.joining(", "));
+            default -> "Unknown user";
+        };
 
-        assertTrue(aliceCount >= 15, "Alice should have ~15 messages (got " + aliceCount + ")");
-        assertTrue(bobCount >= 15, "Bob should have ~15 messages (got " + bobCount + ")");
-        assertTrue(charlieCount >= 15, "Charlie should have ~15 messages (got " + charlieCount + ")");
+        assertTrue(aliceCount >= 15,
+                "Alice should have ~15 messages (got " + aliceCount + ")\n"
+                        + groupMessagesContentForUser.apply("Alice"));
+        assertTrue(bobCount >= 15,
+                "Bob should have ~15 messages (got " + bobCount + ")\n"
+                        + groupMessagesContentForUser.apply("Bob"));
+        assertTrue(charlieCount >= 15,
+                "Charlie should have ~15 messages (got " + charlieCount + ")\n"
+                        + groupMessagesContentForUser.apply("Charlie"));
 
-        System.out.println("[TEST] ✓ Test 7: Concurrent messaging works");
+        System.out.println("[TEST]  Test 7: Concurrent messaging works");
     }
 
     // ==========================================================================
     // TEST 8: Gossip propagation after network partition
     // ==========================================================================
 
+    // ==========================================================================
+    // TEST 8: Gossip propagation after network partition
+    // ==========================================================================
+
     @Test
-    @DisplayName("8. Gossip syncs messages after network partition heals")
+    @Order(8)
+    @DisplayName("Gossip syncs messages after network partition heals")
     void testGossipPropagation() throws Exception {
         // Use 4 members to avoid auto-dissolution when one goes offline
         PeerController alice = createPeer("Alice", getNextPort());
@@ -507,10 +680,10 @@ class GroupChatIntegrationTest {
         PeerController charlie = createPeer("Charlie", getNextPort());
         PeerController david = createPeer("David", getNextPort());
 
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        david.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+        autoAcceptInvitations(david);
 
         makeFriends(alice, bob);
         makeFriends(alice, charlie);
@@ -520,48 +693,76 @@ class GroupChatIntegrationTest {
         makeFriends(charlie, david);
 
         Group tempGroup = alice.createGroup("GossipGroup", List.of("Bob", "Charlie", "David"));
+        String groupId = tempGroup.groupId();
 
-        // Use polling instead of fixed sleep for group creation
-        assertTrue(bob.waitForGroup(tempGroup.getGroupId(), 10000, 200),
-                "Bob should receive the group");
-        assertTrue(charlie.waitForGroup(tempGroup.getGroupId(), 10000, 200),
-                "Charlie should receive the group");
-        assertTrue(david.waitForGroup(tempGroup.getGroupId(), 10000, 200),
-                "David should receive the group");
+        List<PeerController> allPeers = List.of(alice, bob, charlie, david);
+        List<PeerController> controlGroup = List.of(charlie, david);
+        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.GROUP_CREATED,
+                allPeers);
 
-        assertEquals(1, alice.getGroups().size());
-        String groupId = tempGroup.getGroupId();
+        try {
+            boolean success = groupCreationWaiter.await(10, TimeUnit.SECONDS);
+            if (!success) {
+                List<String> pending = groupCreationWaiter.getPendingPeers();
+                fail("Timeout waiting for group creation. Pending peers: " + pending);
+            }
+            allPeers.forEach(
+                    p -> assertEquals(1, p.getGroups().size(), p.getLocalUser().username() + " should have group"));
+        } finally {
+            groupCreationWaiter.cleanup();
+        }
 
         // Partition: Bob offline
         bob.simulateNetworkFailure();
+        MultiPeerGroupEventWaiter messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
+                controlGroup);
 
         // Alice sends messages while Bob is offline
         alice.sendGroupMessage(groupId, "Message 1");
         alice.sendGroupMessage(groupId, "Message 2");
 
-        // Use polling for Charlie and David to receive messages
-        assertTrue(charlie.waitForMessages(groupId, 2, 5000, 100),
-                "Charlie should have received messages");
-        assertTrue(david.waitForMessages(groupId, 2, 5000, 100),
-                "David should have received messages");
+        try {
+            boolean success = messageSentWaiter.await(5, TimeUnit.SECONDS);
+            if (!success) {
+                List<String> pending = messageSentWaiter.getPendingPeers();
+                fail("Timeout waiting for message. Pending peers: " + pending);
+            }
+            controlGroup.forEach(
+                    p -> assertEquals(2, p.getGroupManager().getMessages(groupId).size(),
+                            p.getLocalUser().username() + " should have 2 messages"));
+        } finally {
+            messageSentWaiter.cleanup();
+        }
 
         // Heal partition
         bob.restoreNetwork();
+        messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
+                List.of(bob));
+        try {
+            boolean success = messageSentWaiter.await(5, TimeUnit.SECONDS);
+            if (!success) {
+                List<String> pending = messageSentWaiter.getPendingPeers();
+                fail("Timeout waiting for message. Pending peers: " + pending);
+            }
+            assertTrue(bob.getGroupManager().getMessages(groupId).size() == 2,
+                    "Bob should have both messages");
+        } finally {
+            messageSentWaiter.cleanup();
+        }
 
-        // Use polling for Bob to sync via gossip
-        assertTrue(bob.waitForMessages(groupId, 2, 10000, 200),
-                "Bob should have synced messages via gossip");
-
-        int bobMessages = bob.getGroupManager().getMessages(groupId).size();
-        System.out.println("[TEST] ✓ Test 8: Gossip propagation works - Bob has " + bobMessages + " messages");
     }
 
     // ==========================================================================
     // TEST 9: Consensus-based sync for multiple late joiners
     // ==========================================================================
 
+    // ==========================================================================
+    // TEST 9: Consensus-based sync for multiple late joiners
+    // ==========================================================================
+
     @Test
-    @DisplayName("9. Multiple peers sync missing messages after staggered disconnects")
+    @Order(9)
+    @DisplayName("Multiple peers sync missing messages after staggered disconnects")
     void testConsensusSync() throws Exception {
         // Create 6 peers
         PeerController alice = createPeer("Alice", getNextPort());
@@ -571,12 +772,12 @@ class GroupChatIntegrationTest {
         PeerController eve = createPeer("Eve", getNextPort());
         PeerController frank = createPeer("Frank", getNextPort());
 
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        david.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        eve.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        frank.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+        autoAcceptInvitations(david);
+        autoAcceptInvitations(eve);
+        autoAcceptInvitations(frank);
 
         // Create friendships
         makeFriends(alice, bob);
@@ -594,17 +795,25 @@ class GroupChatIntegrationTest {
         makeFriends(bob, frank);
         makeFriends(charlie, frank);
 
+        List<PeerController> allPeers = List.of(alice, bob, charlie, david, eve, frank);
         Group tempGroup = alice.createGroup("SyncGroup", List.of("Bob", "Charlie", "David", "Eve", "Frank"));
+        String groupId = tempGroup.groupId();
+        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(
+                groupId, TestEvent.GROUP_CREATED, allPeers);
 
-        // Use polling for all peers to receive the group
-        assertTrue(bob.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Bob should receive group");
-        assertTrue(charlie.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Charlie should receive group");
-        assertTrue(david.waitForGroup(tempGroup.getGroupId(), 10000, 200), "David should receive group");
-        assertTrue(eve.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Eve should receive group");
-        assertTrue(frank.waitForGroup(tempGroup.getGroupId(), 10000, 200), "Frank should receive group");
+        try {
+            boolean success = groupCreationWaiter.await(10, TimeUnit.SECONDS);
+            if (!success) {
+                List<String> pending = groupCreationWaiter.getPendingPeers();
+                fail("Timeout waiting for group creation. Pending peers: " + pending);
+            }
+            allPeers.forEach(
+                    p -> assertEquals(1, p.getGroups().size(), p.getLocalUser().username() + " should have group"));
+        } finally {
+            groupCreationWaiter.cleanup();
+        }
 
         assertEquals(1, alice.getGroups().size());
-        String groupId = tempGroup.getGroupId();
 
         // Stagger disconnects: Charlie, David, and Eve go offline at different times
         charlie.simulateNetworkFailure();
@@ -617,9 +826,22 @@ class GroupChatIntegrationTest {
         alice.sendGroupMessage(groupId, "Message 2 - All 3 offline");
         alice.sendGroupMessage(groupId, "Message 3 - All 3 offline");
 
-        // Use polling for Bob and Frank to receive messages
-        assertTrue(bob.waitForMessages(groupId, 3, 5000, 100), "Bob should have all 3 messages");
-        assertTrue(frank.waitForMessages(groupId, 3, 5000, 100), "Frank should have all 3 messages");
+        List<PeerController> controlGroup = List.of(bob, frank);
+        MultiPeerGroupEventWaiter messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
+                controlGroup);
+
+        try {
+            boolean success = messageSentWaiter.await(5, TimeUnit.SECONDS);
+            if (!success) {
+                List<String> pending = messageSentWaiter.getPendingPeers();
+                fail("Timeout waiting for message. Pending peers: " + pending);
+            }
+            controlGroup.forEach(
+                    p -> assertEquals(3, p.getGroupManager().getMessages(groupId).size(),
+                            p.getLocalUser().username() + " should have 3 messages"));
+        } finally {
+            messageSentWaiter.cleanup();
+        }
 
         // Restore all 3 peers one at a time with gaps
         charlie.restoreNetwork();
@@ -628,21 +850,22 @@ class GroupChatIntegrationTest {
         Thread.sleep(500);
         eve.restoreNetwork();
 
-        // Use polling with longer timeout for all 3 to sync messages
-        // The gossip cycle runs every 1 second and might need several rounds
-        assertTrue(charlie.waitForMessages(groupId, 3, 20000, 500),
-                "Charlie should have synced all messages");
-        assertTrue(david.waitForMessages(groupId, 3, 20000, 500),
-                "David should have synced all messages");
-        assertTrue(eve.waitForMessages(groupId, 3, 20000, 500),
-                "Eve should have synced all messages");
+        List<PeerController> restoredGroup = List.of(charlie, david, eve);
+        messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
+                restoredGroup);
 
-        int charlieMessages = charlie.getGroupManager().getMessages(groupId).size();
-        int davidMessages = david.getGroupManager().getMessages(groupId).size();
-        int eveMessages = eve.getGroupManager().getMessages(groupId).size();
-
-        System.out.println("[TEST] ✓ Test 9: Staggered sync works - Charlie: " + charlieMessages +
-                ", David: " + davidMessages + ", Eve: " + eveMessages);
+        try {
+            boolean success = messageSentWaiter.await(5, TimeUnit.SECONDS);
+            if (!success) {
+                List<String> pending = messageSentWaiter.getPendingPeers();
+                fail("Timeout waiting for message. Pending peers: " + pending);
+            }
+            controlGroup.forEach(
+                    p -> assertEquals(3, p.getGroupManager().getMessages(groupId).size(),
+                            p.getLocalUser().username() + " should have 3 messages"));
+        } finally {
+            messageSentWaiter.cleanup();
+        }
     }
 
     // ==========================================================================
@@ -658,10 +881,10 @@ class GroupChatIntegrationTest {
         PeerController david = createPeer("David", getNextPort());
 
         // Set all as auto-accept
-        alice.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        bob.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        charlie.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
-        david.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+        autoAcceptInvitations(david);
 
         makeFriends(alice, bob);
         makeFriends(alice, charlie);
@@ -706,7 +929,7 @@ class GroupChatIntegrationTest {
         // David should have Group2
         assertEquals(1, david.getGroups().size(), "David should have 1 group");
 
-        System.out.println("[TEST] ✓ Test 11: Concurrent group creation works");
+        System.out.println("[TEST]  Test 11: Concurrent group creation works");
     }
 
     // ==========================================================================
@@ -726,7 +949,7 @@ class GroupChatIntegrationTest {
         // Set all as auto-accept
         List<PeerController> allPeers = List.of(alice, bob, charlie, david, eve);
         for (PeerController peer : allPeers) {
-            peer.setInvitationHandler(request -> GroupInvitationResponse.Status.ACCEPTED);
+            autoAcceptInvitations(peer);
         }
 
         // Make all friends
@@ -741,10 +964,10 @@ class GroupChatIntegrationTest {
         Thread.sleep(5000); // Wait for all invitations
 
         // Verify all have the group
-        String groupId = tempGroup.getGroupId();
+        String groupId = tempGroup.groupId();
         for (PeerController peer : allPeers) {
-            assertEquals(1, peer.getGroups().size(), peer.getLocalUser().getUsername() + " should have the group");
-            assertNotNull(peer.getGroup(groupId), peer.getLocalUser().getUsername() + " should have the group by ID");
+            assertEquals(1, peer.getGroups().size(), peer.getLocalUser().username() + " should have the group");
+            assertNotNull(peer.getGroup(groupId), peer.getLocalUser().username() + " should have the group by ID");
         }
 
         // Send rapid messages
@@ -758,10 +981,244 @@ class GroupChatIntegrationTest {
         // Verify all received messages
         for (PeerController peer : allPeers) {
             int messageCount = peer.getGroupManager().getMessages(groupId).size();
-            assertTrue(messageCount >= 10, peer.getLocalUser().getUsername() +
+            assertTrue(messageCount >= 10, peer.getLocalUser().username() +
                     " should have at least 10 messages (got " + messageCount + ")");
         }
 
-        System.out.println("[TEST] ✓ Test 11: Large group messaging verified");
+        System.out.println("[TEST]  Test 11: Large group messaging verified");
+    }
+
+    // ==========================================================================
+    // TEST 10: Member leaving group (Dissolution scenario)
+    // ==========================================================================
+
+    // ==========================================================================
+    // TEST 10: Member leaving group (Dissolution scenario)
+    // ==========================================================================
+
+    @Test
+    @Order(10)
+    @DisplayName("Group dissolves when member leaves and size < 3")
+    void testMemberLeavingDissolvesGroup() throws Exception {
+        PeerController alice = createPeer("Alice", getNextPort());
+        PeerController bob = createPeer("Bob", getNextPort());
+        PeerController charlie = createPeer("Charlie", getNextPort());
+
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+
+        makeFriends(alice, bob);
+        makeFriends(alice, charlie);
+        makeFriends(bob, charlie);
+
+        Group tempGroup = alice.createGroup("LeaveDissolveGroup", List.of("Bob", "Charlie"));
+        Thread.sleep(4000);
+
+        String groupId = tempGroup.groupId();
+        assertNotNull(alice.getGroup(groupId));
+        assertNotNull(bob.getGroup(groupId));
+        assertNotNull(charlie.getGroup(groupId));
+
+        // Charlie leaves
+        charlie.leaveGroup(groupId);
+        Thread.sleep(2000); // Wait for event propagation and dissolution
+
+        // Group should be dissolved for Alice and Bob (Size = 2 < 3)
+        assertNull(alice.getGroup(groupId), "Group should be dissolved for Alice");
+        assertNull(bob.getGroup(groupId), "Group should be dissolved for Bob");
+
+        // Charlie already removed it locally
+        assertNull(charlie.getGroup(groupId));
+
+        System.out.println("[TEST] Test 10: Group dissolved after member leave");
+    }
+
+    // ==========================================================================
+    // TEST 11: Member leaving group (Continuation scenario)
+    // ==========================================================================
+
+    // ==========================================================================
+    // TEST 11: Member leaving group (Continuation scenario)
+    // ==========================================================================
+
+    @Test
+    @Order(11)
+    @DisplayName("Group continues when member leaves and size >= 3")
+    void testMemberLeavingContinuesGroup() throws Exception {
+        PeerController alice = createPeer("Alice", getNextPort());
+        PeerController bob = createPeer("Bob", getNextPort());
+        PeerController charlie = createPeer("Charlie", getNextPort());
+        PeerController david = createPeer("David", getNextPort());
+
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+        autoAcceptInvitations(david);
+
+        makeFriends(alice, bob);
+        makeFriends(alice, charlie);
+        makeFriends(alice, david);
+        makeFriends(bob, charlie);
+        makeFriends(bob, david);
+        makeFriends(charlie, david);
+
+        Group tempGroup = alice.createGroup("LeaveContinueGroup", List.of("Bob", "Charlie", "David"));
+        Thread.sleep(4000);
+
+        String groupId = tempGroup.groupId();
+        assertEquals(4, alice.getGroup(groupId).allMembers().size());
+
+        // Send a message from the leader to keep leader activity fresh
+        // This prevents the gossip manager from detecting leader failure during the test
+        alice.sendGroupMessage(groupId, "Keeping group alive");
+        Thread.sleep(500);
+
+        // David leaves
+        david.leaveGroup(groupId);
+        Thread.sleep(2000);
+
+        // Group should REMAIN for Alice, Bob, Charlie (Size = 3 >= 3)
+        Group aliceGroup = alice.getGroup(groupId);
+        assertNotNull(aliceGroup, "Group should continue for Alice");
+        assertEquals(3, aliceGroup.allMembers().size(), "Group should have 3 members");
+
+        assertNotNull(bob.getGroup(groupId), "Group should continue for Bob");
+        assertNotNull(charlie.getGroup(groupId), "Group should continue for Charlie");
+        assertNull(david.getGroup(groupId), "David should no longer have the group");
+
+        // Verify David is actually removed from Alice's view
+        assertFalse(aliceGroup.isMember(david.getLocalUser().userId()), "David should not be a member");
+
+        System.out.println("[TEST] Test 11: Group continued after member leave");
+    }
+
+    // ==========================================================================
+    // TEST 12: Leader leaving group (Handover scenario)
+    // ==========================================================================
+
+    // ==========================================================================
+    // TEST 12: Leader leaving group (Handover scenario)
+    // ==========================================================================
+
+    @Test
+    @Order(12)
+    @DisplayName("Leader leaves, hands over leadership, group continues")
+    void testLeaderLeavingHandover() throws Exception {
+        PeerController alice = createPeer("Alice", getNextPort());
+        PeerController bob = createPeer("Bob", getNextPort());
+        PeerController charlie = createPeer("Charlie", getNextPort());
+        PeerController david = createPeer("David", getNextPort());
+
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        autoAcceptInvitations(charlie);
+        autoAcceptInvitations(david);
+
+        makeFriends(alice, bob);
+        makeFriends(alice, charlie);
+        makeFriends(alice, david);
+        // Ensure connectivity for everyone for smooth handover
+        makeFriends(bob, charlie);
+        makeFriends(bob, david);
+        makeFriends(charlie, david);
+
+        Group tempGroup = alice.createGroup("LeaderLeaveGroup", List.of("Bob", "Charlie", "David"));
+        Thread.sleep(4000);
+
+        String groupId = tempGroup.groupId();
+        assertEquals(alice.getLocalUser().userId(), alice.getGroup(groupId).leader().userId());
+
+        List<PeerController> remainingPeers = List.of(bob, charlie, david);
+        MultiPeerGroupEventWaiter waiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MEMBER_LEFT,
+                remainingPeers);
+
+        // Alice (Leader) leaves
+        alice.leaveGroup(groupId);
+
+        try {
+            // Wait for the USER_LEFT event to propagate
+            // Since Handover happens first, the group should still exist with a NEW leader
+            // when we check.
+            boolean success = waiter.await(5, TimeUnit.SECONDS);
+            assertTrue(success, "Timeout waiting for user left event");
+
+            // Verify group exists for others
+            Group bobGroup = bob.getGroup(groupId);
+            assertNotNull(bobGroup);
+            assertEquals(3, bobGroup.allMembers().size());
+
+            // Verify NEW LEADER is NOT Alice
+            String newLeaderId = bobGroup.leader().userId();
+            assertNotEquals(alice.getLocalUser().userId(), newLeaderId, "Alice should not be leader anymore");
+
+            // Verify new leader is one of the members (Bob, Charlie, David) or whoever had
+            // highest ID
+            assertTrue(
+                    List.of(bob, charlie, david).stream().anyMatch(p -> p.getLocalUser().userId().equals(newLeaderId)),
+                    "New leader should be one of the remaining members");
+
+        } finally {
+            waiter.cleanup();
+        }
+
+        System.out.println("[TEST] Test 12: Leader left, handed over, group continues");
+    }
+
+    // ==========================================================================
+    // TEST 13: Security Checks (Malicious User)
+    // ==========================================================================
+
+    // ==========================================================================
+    // TEST 13: Security Checks (Malicious User)
+    // ==========================================================================
+
+    @Test
+    @Order(13)
+    @DisplayName("Non-leader cannot broadcast USER_JOINED/USER_REJECTED")
+    void testSecurityChecks() throws Exception {
+        PeerController alice = createPeer("Alice", getNextPort());
+        PeerController bob = createPeer("Bob", getNextPort());
+
+        autoAcceptInvitations(alice);
+        autoAcceptInvitations(bob);
+        makeFriends(alice, bob);
+
+        // Alice creates group with just Bob (and a third dummy - wait, creates with
+        // list)
+        // Need 3 total. Add Charlie.
+        PeerController charlie = createPeer("Charlie", getNextPort());
+        autoAcceptInvitations(charlie);
+        makeFriends(alice, charlie);
+        makeFriends(bob, charlie);
+
+        Group group = alice.createGroup("SecurityGroup", List.of("Bob", "Charlie"));
+        Thread.sleep(4000);
+        String groupId = group.groupId();
+
+        // Bob (non-leader) tries to send USER_JOINED for a fake user
+        User fakeUser = User.create("FakeUser", "1.2.3.4", 1234);
+
+        // Construct malicious message
+        p2p.common.model.message.GroupEventMessage maliciousMsg = p2p.common.model.message.GroupEventMessage
+                .userJoinedMessage(
+                        bob.getLocalUser().userId(), // Sender is Bob (Not Leader)
+                        group,
+                        new p2p.common.vectorclock.VectorClock(),
+                        fakeUser);
+
+        // Alice receives it
+        Registry registry = LocateRegistry.getRegistry(alice.getLocalUser().ipAddress(),
+                alice.getLocalUser().rmiPort());
+        PeerService peerService = (PeerService) registry.lookup("PeerService");
+
+        // Should be logged as ignored and verify Alice's group doesn't have FakeUser
+        peerService.receiveMessage(maliciousMsg);
+        Thread.sleep(500);
+
+        assertFalse(alice.getGroup(groupId).isMember(fakeUser.userId()),
+                "Alice should not accept fake user from non-leader");
+
+        System.out.println("[TEST] Test 13: Security checks passed");
     }
 }
