@@ -1,20 +1,17 @@
 When reviewing code, focus on:
 
 ## Performance Red Flags
-
 - Spot inefficient loops and algorithmic issues
 - Check for memory leaks and resource cleanup
 - Review caching opportunities for expensive operations
 
 ## Code Quality Essentials
-
 - Functions should be focused and appropriately sized
 - Use clear, descriptive naming conventions
 - Ensure proper error handling throughout
 - Code should follow a pragmatic approach
 
 ## Review Style
-
 - Be specific and constructive in feedback
 - Acknowledge good patterns and solutions
 - Ask clarifying questions when code intent is unclear
