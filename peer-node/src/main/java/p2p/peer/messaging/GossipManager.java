@@ -117,13 +117,15 @@ public class GossipManager {
     }
 
     /**
-     * Record leader activity (message received from leader).
-     * Also records group creation time if this is the first activity for a group.
+     * Record leader activity (message received from leader or group joined/created).
+     * Updates the last seen timestamp for the leader.
+     * Also records group creation/join time if this is the first activity for a group
+     * (used for the grace period to prevent premature failure detection).
      */
     public void recordLeaderActivity(String groupId) {
         long now = System.currentTimeMillis();
         leaderLastSeen.put(groupId, now);
-        // Track creation time for grace period - only set once
+        // Track creation/join time for grace period - only set on first call
         groupCreationTimes.putIfAbsent(groupId, now);
     }
 

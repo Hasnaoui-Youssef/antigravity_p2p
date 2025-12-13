@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -35,7 +36,7 @@ public class MultiPeerGroupEventWaiter {
     private final Set<String> succeededPeerIds = ConcurrentHashMap.newKeySet();
     private final Map<String, PeerController> peersMap = new ConcurrentHashMap<>();
     private final Map<String, PeerEventListener> listenersMap = new ConcurrentHashMap<>();
-    private volatile String matchedGroupId = null;
+    private final AtomicReference<String> matchedGroupId = new AtomicReference<>(null);
 
     /**
      * Creates a waiter for a specific group event.
@@ -61,10 +62,8 @@ public class MultiPeerGroupEventWaiter {
                     try {
                         TestEvent testEvent = TestEvent.fromGroupEvent(eventType);
                         if (testEvent == expectedEvent) {
-                            // Record the matched groupId for later reference
-                            if (matchedGroupId == null) {
-                                matchedGroupId = gId;
-                            }
+                            // Thread-safe: only first thread to set wins
+                            matchedGroupId.compareAndSet(null, gId);
                             if (succeededPeerIds.add(userId)) {
                                 latch.countDown();
                             }
@@ -79,9 +78,8 @@ public class MultiPeerGroupEventWaiter {
                     if (groupId != null && !gId.equals(groupId))
                         return;
                     if (expectedEvent == TestEvent.LEADER_ELECTED) {
-                        if (matchedGroupId == null) {
-                            matchedGroupId = gId;
-                        }
+                        // Thread-safe: only first thread to set wins
+                        matchedGroupId.compareAndSet(null, gId);
                         if (succeededPeerIds.add(userId)) {
                             latch.countDown();
                         }
@@ -108,9 +106,8 @@ public class MultiPeerGroupEventWaiter {
                         return;
                     if (groupId != null && !groupChatMessage.getGroupId().equals(groupId))
                         return;
-                    if (matchedGroupId == null) {
-                        matchedGroupId = groupChatMessage.getGroupId();
-                    }
+                    // Thread-safe: only first thread to set wins
+                    matchedGroupId.compareAndSet(null, groupChatMessage.getGroupId());
                     if (succeededPeerIds.add(userId)) {
                         latch.countDown();
                     }
@@ -151,7 +148,7 @@ public class MultiPeerGroupEventWaiter {
      * Returns the groupId that was matched (useful when waiting for any group).
      */
     public String getMatchedGroupId() {
-        return matchedGroupId;
+        return matchedGroupId.get();
     }
 
     public List<String> getSucceededPeers() {
