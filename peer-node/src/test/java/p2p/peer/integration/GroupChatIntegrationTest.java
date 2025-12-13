@@ -495,14 +495,15 @@ class GroupChatIntegrationTest {
         makeFriends(david, eve);
         makeFriends(eve, frank);
 
+        // Set up waiter BEFORE creating group (use null for groupId to match any group)
+        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(
+                null, TestEvent.GROUP_CREATED, allPeers);
+
         // Alice creates group with 5 others
         Group tempGroup = alice.createGroup("LargeElectionGroup",
                 List.of("Bob", "Charlie", "David", "Eve", "Frank"));
 
         String groupId = tempGroup.groupId();
-
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(
-                groupId, TestEvent.GROUP_CREATED, allPeers);
 
         try {
             boolean success = groupCreationWaiter.await(10, TimeUnit.SECONDS);
@@ -692,13 +693,15 @@ class GroupChatIntegrationTest {
         makeFriends(bob, david);
         makeFriends(charlie, david);
 
-        Group tempGroup = alice.createGroup("GossipGroup", List.of("Bob", "Charlie", "David"));
-        String groupId = tempGroup.groupId();
-
         List<PeerController> allPeers = List.of(alice, bob, charlie, david);
         List<PeerController> controlGroup = List.of(charlie, david);
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.GROUP_CREATED,
+        
+        // Set up waiter BEFORE creating group (use null for groupId to match any group)
+        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED,
                 allPeers);
+
+        Group tempGroup = alice.createGroup("GossipGroup", List.of("Bob", "Charlie", "David"));
+        String groupId = tempGroup.groupId();
 
         try {
             boolean success = groupCreationWaiter.await(10, TimeUnit.SECONDS);
@@ -714,6 +717,8 @@ class GroupChatIntegrationTest {
 
         // Partition: Bob offline
         bob.simulateNetworkFailure();
+        
+        // Set up message waiter BEFORE sending messages
         MultiPeerGroupEventWaiter messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
                 controlGroup);
 
@@ -734,20 +739,25 @@ class GroupChatIntegrationTest {
             messageSentWaiter.cleanup();
         }
 
+        // Set up waiter BEFORE restoring network to catch sync messages
+        MultiPeerGroupEventWaiter bobMessageWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
+                List.of(bob));
+        
         // Heal partition
         bob.restoreNetwork();
-        messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
-                List.of(bob));
+        
         try {
-            boolean success = messageSentWaiter.await(5, TimeUnit.SECONDS);
+            boolean success = bobMessageWaiter.await(10, TimeUnit.SECONDS);
             if (!success) {
-                List<String> pending = messageSentWaiter.getPendingPeers();
-                fail("Timeout waiting for message. Pending peers: " + pending);
+                List<String> pending = bobMessageWaiter.getPendingPeers();
+                fail("Timeout waiting for message sync. Pending peers: " + pending);
             }
-            assertTrue(bob.getGroupManager().getMessages(groupId).size() == 2,
+            // Small delay to ensure all sync processing completes
+            Thread.sleep(500);
+            assertEquals(2, bob.getGroupManager().getMessages(groupId).size(),
                     "Bob should have both messages");
         } finally {
-            messageSentWaiter.cleanup();
+            bobMessageWaiter.cleanup();
         }
 
     }
@@ -796,10 +806,13 @@ class GroupChatIntegrationTest {
         makeFriends(charlie, frank);
 
         List<PeerController> allPeers = List.of(alice, bob, charlie, david, eve, frank);
+        
+        // Set up waiter BEFORE creating group (use null for groupId to match any group)
+        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(
+                null, TestEvent.GROUP_CREATED, allPeers);
+        
         Group tempGroup = alice.createGroup("SyncGroup", List.of("Bob", "Charlie", "David", "Eve", "Frank"));
         String groupId = tempGroup.groupId();
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(
-                groupId, TestEvent.GROUP_CREATED, allPeers);
 
         try {
             boolean success = groupCreationWaiter.await(10, TimeUnit.SECONDS);
@@ -821,14 +834,16 @@ class GroupChatIntegrationTest {
         eve.simulateNetworkFailure();
         Thread.sleep(300); // Let them fully disconnect
 
+        List<PeerController> controlGroup = List.of(bob, frank);
+        
+        // Set up message waiter BEFORE sending messages
+        MultiPeerGroupEventWaiter messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
+                controlGroup);
+
         // Send all messages while all 3 are offline
         alice.sendGroupMessage(groupId, "Message 1 - All 3 offline");
         alice.sendGroupMessage(groupId, "Message 2 - All 3 offline");
         alice.sendGroupMessage(groupId, "Message 3 - All 3 offline");
-
-        List<PeerController> controlGroup = List.of(bob, frank);
-        MultiPeerGroupEventWaiter messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
-                controlGroup);
 
         try {
             boolean success = messageSentWaiter.await(5, TimeUnit.SECONDS);
@@ -843,6 +858,11 @@ class GroupChatIntegrationTest {
             messageSentWaiter.cleanup();
         }
 
+        // Set up waiter BEFORE restoring network to catch sync messages
+        List<PeerController> restoredGroup = List.of(charlie, david, eve);
+        MultiPeerGroupEventWaiter restoredMessageWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
+                restoredGroup);
+
         // Restore all 3 peers one at a time with gaps
         charlie.restoreNetwork();
         Thread.sleep(500);
@@ -850,21 +870,19 @@ class GroupChatIntegrationTest {
         Thread.sleep(500);
         eve.restoreNetwork();
 
-        List<PeerController> restoredGroup = List.of(charlie, david, eve);
-        messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
-                restoredGroup);
-
         try {
-            boolean success = messageSentWaiter.await(5, TimeUnit.SECONDS);
+            boolean success = restoredMessageWaiter.await(10, TimeUnit.SECONDS);
             if (!success) {
-                List<String> pending = messageSentWaiter.getPendingPeers();
-                fail("Timeout waiting for message. Pending peers: " + pending);
+                List<String> pending = restoredMessageWaiter.getPendingPeers();
+                fail("Timeout waiting for message sync. Pending peers: " + pending);
             }
-            controlGroup.forEach(
+            // Small delay to ensure all sync processing completes
+            Thread.sleep(500);
+            restoredGroup.forEach(
                     p -> assertEquals(3, p.getGroupManager().getMessages(groupId).size(),
                             p.getLocalUser().username() + " should have 3 messages"));
         } finally {
-            messageSentWaiter.cleanup();
+            restoredMessageWaiter.cleanup();
         }
     }
 
