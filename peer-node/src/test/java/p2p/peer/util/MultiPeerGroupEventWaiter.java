@@ -16,12 +16,19 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
  * Utility for waiting for a specific group event across multiple peers.
  * Ensures that each peer is counted only once, even if they receive multiple
  * notifications.
+ * 
+ * IMPORTANT: Create the waiter BEFORE triggering the action that causes the event.
+ * This ensures the listener is attached before any events fire.
+ * 
+ * For GROUP_CREATED events where the groupId is not known in advance, pass null
+ * for groupId to match any group.
  */
 public class MultiPeerGroupEventWaiter {
 
@@ -29,7 +36,15 @@ public class MultiPeerGroupEventWaiter {
     private final Set<String> succeededPeerIds = ConcurrentHashMap.newKeySet();
     private final Map<String, PeerController> peersMap = new ConcurrentHashMap<>();
     private final Map<String, PeerEventListener> listenersMap = new ConcurrentHashMap<>();
+    private final AtomicReference<String> matchedGroupId = new AtomicReference<>(null);
 
+    /**
+     * Creates a waiter for a specific group event.
+     * 
+     * @param groupId The group ID to match, or null to match any group (useful for GROUP_CREATED)
+     * @param expectedEvent The event type to wait for
+     * @param peers The list of peers that should all receive the event
+     */
     public MultiPeerGroupEventWaiter(String groupId, TestEvent expectedEvent, List<PeerController> peers) {
         this.latch = new CountDownLatch(peers.size());
 
@@ -40,12 +55,15 @@ public class MultiPeerGroupEventWaiter {
             PeerEventListener listener = new PeerEventListener() {
                 @Override
                 public void onGroupEvent(String gId, GroupEvent eventType, String message) {
-                    if (!gId.equals(groupId))
+                    // If groupId is null, match any group; otherwise match exactly
+                    if (groupId != null && !gId.equals(groupId))
                         return;
 
                     try {
                         TestEvent testEvent = TestEvent.fromGroupEvent(eventType);
                         if (testEvent == expectedEvent) {
+                            // Thread-safe: only first thread to set wins
+                            matchedGroupId.compareAndSet(null, gId);
                             if (succeededPeerIds.add(userId)) {
                                 latch.countDown();
                             }
@@ -57,7 +75,11 @@ public class MultiPeerGroupEventWaiter {
 
                 @Override
                 public void onLeaderElected(String gId, String leaderId, long epoch) {
-                    if (expectedEvent == TestEvent.LEADER_ELECTED && gId.equals(groupId)) {
+                    if (groupId != null && !gId.equals(groupId))
+                        return;
+                    if (expectedEvent == TestEvent.LEADER_ELECTED) {
+                        // Thread-safe: only first thread to set wins
+                        matchedGroupId.compareAndSet(null, gId);
                         if (succeededPeerIds.add(userId)) {
                             latch.countDown();
                         }
@@ -82,8 +104,10 @@ public class MultiPeerGroupEventWaiter {
                         return;
                     if (groupChatMessage.getSubtopic() != ChatSubtopic.GROUP)
                         return;
-                    if (!groupChatMessage.getGroupId().equals(groupId))
+                    if (groupId != null && !groupChatMessage.getGroupId().equals(groupId))
                         return;
+                    // Thread-safe: only first thread to set wins
+                    matchedGroupId.compareAndSet(null, groupChatMessage.getGroupId());
                     if (succeededPeerIds.add(userId)) {
                         latch.countDown();
                     }
@@ -118,6 +142,13 @@ public class MultiPeerGroupEventWaiter {
                 peer.removeEventListener(entry.getValue());
             }
         }
+    }
+    
+    /**
+     * Returns the groupId that was matched (useful when waiting for any group).
+     */
+    public String getMatchedGroupId() {
+        return matchedGroupId.get();
     }
 
     public List<String> getSucceededPeers() {

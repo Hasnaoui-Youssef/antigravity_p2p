@@ -44,6 +44,12 @@ public class GossipManager {
     // Track groups for which we've already triggered failure callback
     private final Set<String> failureTriggered = ConcurrentHashMap.newKeySet();
 
+    // Track group creation times for grace period (groupId -> creation timestamp)
+    private final Map<String, Long> groupCreationTimes = new ConcurrentHashMap<>();
+
+    // Grace period for newly created groups (10 seconds)
+    private static final long GROUP_CREATION_GRACE_PERIOD_MS = 10000;
+
     // Callback for leader failure detection
     private LeaderFailureCallback failureCallback;
 
@@ -93,6 +99,12 @@ public class GossipManager {
                 continue;
             }
 
+            // Skip groups within the grace period after creation
+            Long creationTime = groupCreationTimes.get(groupId);
+            if (creationTime != null && (now - creationTime) < GROUP_CREATION_GRACE_PERIOD_MS) {
+                continue;
+            }
+
             long lastSeen = getLeaderLastSeen(groupId);
             if (now - lastSeen > TIMEOUT_MS) {
                 // Leader timeout detected
@@ -105,10 +117,16 @@ public class GossipManager {
     }
 
     /**
-     * Record leader activity (message received from leader).
+     * Record leader activity (message received from leader or group joined/created).
+     * Updates the last seen timestamp for the leader.
+     * Also records group creation/join time if this is the first activity for a group
+     * (used for the grace period to prevent premature failure detection).
      */
     public void recordLeaderActivity(String groupId) {
-        leaderLastSeen.put(groupId, System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        leaderLastSeen.put(groupId, now);
+        // Track creation/join time for grace period - only set on first call
+        groupCreationTimes.putIfAbsent(groupId, now);
     }
 
     /**
@@ -213,6 +231,13 @@ public class GossipManager {
             return;
         }
 
+        // Skip groups within the grace period after creation
+        long now = System.currentTimeMillis();
+        Long creationTime = groupCreationTimes.get(groupId);
+        if (creationTime != null && (now - creationTime) < GROUP_CREATION_GRACE_PERIOD_MS) {
+            return;
+        }
+
         // Get remote peer's last seen timestamp for this group's leader
         Map<String, Long> remoteLiveness = message.getLeaderLastSeen();
         if (remoteLiveness == null || !remoteLiveness.containsKey(groupId)) {
@@ -220,7 +245,6 @@ public class GossipManager {
         }
 
         long remoteTimestamp = remoteLiveness.get(groupId);
-        long now = System.currentTimeMillis();
         long staleness = now - remoteTimestamp;
 
         // Suspicion threshold: 5 seconds
