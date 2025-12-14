@@ -26,7 +26,6 @@ import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -370,7 +369,8 @@ class GroupChatIntegrationTest {
 
         makeFriends(alice, bob);
 
-        assertThrows(IllegalArgumentException.class, () -> alice.createGroup("SmallGroup", List.of("Bob")), "Creating a group with a single invitation should throw");
+        assertThrows(IllegalArgumentException.class, () -> alice.createGroup("SmallGroup", List.of("Bob")),
+                "Creating a group with a single invitation should throw");
     }
 
     @Test
@@ -581,7 +581,6 @@ class GroupChatIntegrationTest {
             }
         });
 
-
         t1.start();
         t2.start();
         t3.start();
@@ -641,7 +640,7 @@ class GroupChatIntegrationTest {
 
         List<PeerController> allPeers = List.of(alice, bob, charlie, david);
         List<PeerController> controlGroup = List.of(charlie, david);
-        
+
         // Set up waiter BEFORE creating group (use null for groupId to match any group)
         MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED,
                 allPeers);
@@ -663,7 +662,7 @@ class GroupChatIntegrationTest {
 
         // Partition: Bob offline
         bob.simulateNetworkFailure();
-        
+
         // Set up message waiter BEFORE sending messages
         MultiPeerGroupEventWaiter messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
                 controlGroup);
@@ -688,10 +687,10 @@ class GroupChatIntegrationTest {
         // Set up waiter BEFORE restoring network to catch sync messages
         MultiPeerGroupEventWaiter bobMessageWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
                 List.of(bob));
-        
+
         // Heal partition
         bob.restoreNetwork();
-        
+
         try {
             boolean success = bobMessageWaiter.await(10, TimeUnit.SECONDS);
             if (!success) {
@@ -752,11 +751,11 @@ class GroupChatIntegrationTest {
         makeFriends(charlie, frank);
 
         List<PeerController> allPeers = List.of(alice, bob, charlie, david, eve, frank);
-        
+
         // Set up waiter BEFORE creating group (use null for groupId to match any group)
         MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(
                 null, TestEvent.GROUP_CREATED, allPeers);
-        
+
         Group tempGroup = alice.createGroup("SyncGroup", List.of("Bob", "Charlie", "David", "Eve", "Frank"));
         String groupId = tempGroup.groupId();
 
@@ -781,7 +780,7 @@ class GroupChatIntegrationTest {
         Thread.sleep(300); // Let them fully disconnect
 
         List<PeerController> controlGroup = List.of(bob, frank);
-        
+
         // Set up message waiter BEFORE sending messages
         MultiPeerGroupEventWaiter messageSentWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
                 controlGroup);
@@ -806,7 +805,8 @@ class GroupChatIntegrationTest {
 
         // Set up waiter BEFORE restoring network to catch sync messages
         List<PeerController> restoredGroup = List.of(charlie, david, eve);
-        MultiPeerGroupEventWaiter restoredMessageWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
+        MultiPeerGroupEventWaiter restoredMessageWaiter = new MultiPeerGroupEventWaiter(groupId,
+                TestEvent.MESSAGE_RECEIVED,
                 restoredGroup);
 
         // Restore all 3 peers one at a time with gaps
@@ -875,7 +875,7 @@ class GroupChatIntegrationTest {
         t2.join();
 
         Thread.sleep(5000); // Wait for both to finalize
-        if(expectedGroups.get() <= 0){
+        if (expectedGroups.get() <= 0) {
             fail("Both groups failed to be created");
         }
 
@@ -1008,7 +1008,8 @@ class GroupChatIntegrationTest {
         assertEquals(4, alice.getGroup(groupId).allMembers().size());
 
         // Send a message from the leader to keep leader activity fresh
-        // This prevents the gossip manager from detecting leader failure during the test
+        // This prevents the gossip manager from detecting leader failure during the
+        // test
         alice.sendGroupMessage(groupId, "Keeping group alive");
         Thread.sleep(500);
 
@@ -1166,7 +1167,8 @@ class GroupChatIntegrationTest {
 
         // Set up waiter before creating group
         List<PeerController> allPeers = List.of(alice, bob, charlie, david);
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED, allPeers);
+        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED,
+                allPeers);
 
         Group group = alice.createGroup("LeaveMessageTest", List.of("Bob", "Charlie", "David"));
         String groupId = group.groupId();
@@ -1187,7 +1189,8 @@ class GroupChatIntegrationTest {
 
         // Send a message from Alice after David left
         List<PeerController> remainingPeers = List.of(bob, charlie);
-        MultiPeerGroupEventWaiter messageWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED, remainingPeers);
+        MultiPeerGroupEventWaiter messageWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED,
+                remainingPeers);
 
         alice.sendGroupMessage(groupId, "Message after David left");
 
@@ -1233,7 +1236,8 @@ class GroupChatIntegrationTest {
         makeFriends(charlie, david);
 
         List<PeerController> allPeers = List.of(alice, bob, charlie, david);
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED, allPeers);
+        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED,
+                allPeers);
 
         Group group = alice.createGroup("UserListTest", List.of("Bob", "Charlie", "David"));
         String groupId = group.groupId();
@@ -1287,7 +1291,8 @@ class GroupChatIntegrationTest {
         makeFriends(charlie, david);
 
         List<PeerController> allPeers = List.of(alice, bob, charlie, david);
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED, allPeers);
+        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED,
+                allPeers);
 
         Group group = alice.createGroup("ConcurrentLeaveTest", List.of("Bob", "Charlie", "David"));
         String groupId = group.groupId();
@@ -1327,10 +1332,6 @@ class GroupChatIntegrationTest {
 
     }
 
-    // ==========================================================================
-    // TEST 17: Leader election correctly excludes users who left
-    // ==========================================================================
-
     @Test
     @Order(18)
     @DisplayName("Leader election correctly excludes users who left before election")
@@ -1358,7 +1359,8 @@ class GroupChatIntegrationTest {
         makeFriends(charlie, david);
         makeFriends(david, eve);
 
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED, allPeers);
+        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED,
+                allPeers);
 
         Group group = alice.createGroup("ElectionExcludeTest", List.of("Bob", "Charlie", "David", "Eve"));
         String groupId = group.groupId();
@@ -1382,13 +1384,15 @@ class GroupChatIntegrationTest {
                     peer.getLocalUser().username() + " should not see Eve as an active member");
         }
 
-        // Now Alice (leader) stops - this should trigger election among Bob, Charlie, David
+        // Now Alice (leader) stops - this should trigger election among Bob, Charlie,
+        // David
         alice.stop();
         peers.remove(alice);
 
         // Wait for election
         List<PeerController> remainingPeers = List.of(bob, charlie, david);
-        MultiPeerGroupEventWaiter electionWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.LEADER_ELECTED, remainingPeers);
+        MultiPeerGroupEventWaiter electionWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.LEADER_ELECTED,
+                remainingPeers);
 
         try {
             boolean success = electionWaiter.await(30, TimeUnit.SECONDS);
@@ -1411,292 +1415,5 @@ class GroupChatIntegrationTest {
             assertEquals(newLeaderId, peer.getGroup(groupId).leader().userId(),
                     peer.getLocalUser().username() + " should agree on the new leader");
         }
-    }
-
-    // ==========================================================================
-    // TEST 14: Messages after user leaves are not delivered to the left user
-    // ==========================================================================
-
-    @Test
-    @Order(14)
-    @DisplayName("Messages sent after user leaves are not delivered to that user")
-    void testMessagesNotDeliveredAfterLeave() throws Exception {
-        PeerController alice = createPeer("Alice", getNextPort());
-        PeerController bob = createPeer("Bob", getNextPort());
-        PeerController charlie = createPeer("Charlie", getNextPort());
-        PeerController david = createPeer("David", getNextPort());
-
-        autoAcceptInvitations(alice);
-        autoAcceptInvitations(bob);
-        autoAcceptInvitations(charlie);
-        autoAcceptInvitations(david);
-
-        makeFriends(alice, bob);
-        makeFriends(alice, charlie);
-        makeFriends(alice, david);
-        makeFriends(bob, charlie);
-        makeFriends(bob, david);
-        makeFriends(charlie, david);
-
-        // Set up waiter before creating group
-        List<PeerController> allPeers = List.of(alice, bob, charlie, david);
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED, allPeers);
-
-        Group group = alice.createGroup("LeaveMessageTest", List.of("Bob", "Charlie", "David"));
-        String groupId = group.groupId();
-
-        try {
-            boolean success = groupCreationWaiter.await(10, TimeUnit.SECONDS);
-            assertTrue(success, "Group creation should complete");
-        } finally {
-            groupCreationWaiter.cleanup();
-        }
-
-        // Verify all have the group
-        allPeers.forEach(p -> assertEquals(1, p.getGroups().size()));
-
-        // David leaves the group
-        david.leaveGroup(groupId);
-        Thread.sleep(1000); // Wait for leave to propagate
-
-        // Send a message from Alice after David left
-        List<PeerController> remainingPeers = List.of(bob, charlie);
-        MultiPeerGroupEventWaiter messageWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.MESSAGE_RECEIVED, remainingPeers);
-
-        alice.sendGroupMessage(groupId, "Message after David left");
-
-        try {
-            boolean success = messageWaiter.await(5, TimeUnit.SECONDS);
-            assertTrue(success, "Message should be received by remaining members");
-            Thread.sleep(500);
-        } finally {
-            messageWaiter.cleanup();
-        }
-
-        // Verify David did not receive the message (he left)
-        // David shouldn't have the group anymore
-        assertNull(david.getGroup(groupId), "David should not have the group after leaving");
-        assertEquals(0, david.getGroupManager().getMessages(groupId).size(), 
-                "David should not have received the message sent after he left");
-
-        // Verify remaining members received the message
-        assertEquals(1, bob.getGroupManager().getMessages(groupId).size());
-        assertEquals(1, charlie.getGroupManager().getMessages(groupId).size());
-
-        System.out.println("[TEST] Test 14: Messages not delivered to users who left");
-    }
-
-    // ==========================================================================
-    // TEST 15: User list is updated before gossip detects changes
-    // ==========================================================================
-
-    @Test
-    @Order(15)
-    @DisplayName("User list is properly updated before gossip runs after leave")
-    void testUserListUpdatedBeforeGossip() throws Exception {
-        PeerController alice = createPeer("Alice", getNextPort());
-        PeerController bob = createPeer("Bob", getNextPort());
-        PeerController charlie = createPeer("Charlie", getNextPort());
-        PeerController david = createPeer("David", getNextPort());
-
-        autoAcceptInvitations(alice);
-        autoAcceptInvitations(bob);
-        autoAcceptInvitations(charlie);
-        autoAcceptInvitations(david);
-
-        makeFriends(alice, bob);
-        makeFriends(alice, charlie);
-        makeFriends(alice, david);
-        makeFriends(bob, charlie);
-        makeFriends(bob, david);
-        makeFriends(charlie, david);
-
-        List<PeerController> allPeers = List.of(alice, bob, charlie, david);
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED, allPeers);
-
-        Group group = alice.createGroup("UserListTest", List.of("Bob", "Charlie", "David"));
-        String groupId = group.groupId();
-
-        try {
-            boolean success = groupCreationWaiter.await(10, TimeUnit.SECONDS);
-            assertTrue(success, "Group creation should complete");
-        } finally {
-            groupCreationWaiter.cleanup();
-        }
-
-        // Verify initial member counts
-        Group aliceGroup = alice.getGroup(groupId);
-        assertEquals(4, aliceGroup.activeMembers().size(), "Should have 4 active members initially");
-
-        // David leaves
-        david.leaveGroup(groupId);
-        Thread.sleep(2000); // Wait for leave to propagate
-
-        // Verify member lists are updated on all remaining peers
-        for (PeerController peer : List.of(alice, bob, charlie)) {
-            Group g = peer.getGroup(groupId);
-            assertNotNull(g, peer.getLocalUser().username() + " should still have the group");
-            assertEquals(3, g.activeMembers().size(), 
-                    peer.getLocalUser().username() + " should see 3 active members after David left");
-            assertFalse(g.isMember(david.getLocalUser()),
-                    peer.getLocalUser().username() + " should not see David as a member");
-        }
-
-        System.out.println("[TEST] Test 15: User list properly updated after leave");
-    }
-
-    // ==========================================================================
-    // TEST 16: Leaving during ongoing message delivery is handled gracefully
-    // ==========================================================================
-
-    @Test
-    @Order(16)
-    @DisplayName("User leaving during message delivery is handled gracefully")
-    void testLeaveDuringMessageDelivery() throws Exception {
-        PeerController alice = createPeer("Alice", getNextPort());
-        PeerController bob = createPeer("Bob", getNextPort());
-        PeerController charlie = createPeer("Charlie", getNextPort());
-        PeerController david = createPeer("David", getNextPort());
-
-        autoAcceptInvitations(alice);
-        autoAcceptInvitations(bob);
-        autoAcceptInvitations(charlie);
-        autoAcceptInvitations(david);
-
-        makeFriends(alice, bob);
-        makeFriends(alice, charlie);
-        makeFriends(alice, david);
-        makeFriends(bob, charlie);
-        makeFriends(bob, david);
-        makeFriends(charlie, david);
-
-        List<PeerController> allPeers = List.of(alice, bob, charlie, david);
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED, allPeers);
-
-        Group group = alice.createGroup("ConcurrentLeaveTest", List.of("Bob", "Charlie", "David"));
-        String groupId = group.groupId();
-
-        try {
-            boolean success = groupCreationWaiter.await(10, TimeUnit.SECONDS);
-            assertTrue(success, "Group creation should complete");
-        } finally {
-            groupCreationWaiter.cleanup();
-        }
-
-        // Send multiple messages and have David leave in the middle
-        alice.sendGroupMessage(groupId, "Message 1 - Before leave");
-        
-        // David leaves immediately after first message
-        david.leaveGroup(groupId);
-        
-        // Send more messages - these should go to remaining members only
-        alice.sendGroupMessage(groupId, "Message 2 - After leave");
-        alice.sendGroupMessage(groupId, "Message 3 - After leave");
-
-        Thread.sleep(2000); // Wait for all messages and leave to propagate
-
-        // Verify group still works for remaining members
-        Group aliceGroup = alice.getGroup(groupId);
-        assertNotNull(aliceGroup, "Group should still exist for Alice");
-        assertEquals(3, aliceGroup.activeMembers().size(), "Should have 3 members");
-
-        // Bob and Charlie should have all 3 messages (they were members the whole time)
-        assertTrue(bob.getGroupManager().getMessages(groupId).size() >= 2,
-                "Bob should have received messages after David left");
-        assertTrue(charlie.getGroupManager().getMessages(groupId).size() >= 2,
-                "Charlie should have received messages after David left");
-
-        // David should not have the group
-        assertNull(david.getGroup(groupId), "David should not have the group");
-
-        System.out.println("[TEST] Test 16: Leave during message delivery handled gracefully");
-    }
-
-    // ==========================================================================
-    // TEST 17: Leader election correctly excludes users who left
-    // ==========================================================================
-
-    @Test
-    @Order(17)
-    @DisplayName("Leader election correctly excludes users who left before election")
-    void testLeaderElectionExcludesLeftUsers() throws Exception {
-        PeerController alice = createPeer("Alice", getNextPort());
-        PeerController bob = createPeer("Bob", getNextPort());
-        PeerController charlie = createPeer("Charlie", getNextPort());
-        PeerController david = createPeer("David", getNextPort());
-        PeerController eve = createPeer("Eve", getNextPort());
-
-        List<PeerController> allPeers = List.of(alice, bob, charlie, david, eve);
-
-        autoAcceptInvitations(alice);
-        autoAcceptInvitations(bob);
-        autoAcceptInvitations(charlie);
-        autoAcceptInvitations(david);
-        autoAcceptInvitations(eve);
-
-        makeFriends(alice, bob);
-        makeFriends(alice, charlie);
-        makeFriends(alice, david);
-        makeFriends(alice, eve);
-        makeFriends(bob, charlie);
-        makeFriends(bob, david);
-        makeFriends(charlie, david);
-        makeFriends(david, eve);
-
-        MultiPeerGroupEventWaiter groupCreationWaiter = new MultiPeerGroupEventWaiter(null, TestEvent.GROUP_CREATED, allPeers);
-
-        Group group = alice.createGroup("ElectionExcludeTest", List.of("Bob", "Charlie", "David", "Eve"));
-        String groupId = group.groupId();
-
-        try {
-            boolean success = groupCreationWaiter.await(10, TimeUnit.SECONDS);
-            assertTrue(success, "Group creation should complete");
-        } finally {
-            groupCreationWaiter.cleanup();
-        }
-
-        // Eve leaves gracefully (before any failure)
-        eve.leaveGroup(groupId);
-        Thread.sleep(2000); // Wait for leave to propagate
-
-        // Verify Eve is no longer in the group on other peers
-        for (PeerController peer : List.of(alice, bob, charlie, david)) {
-            Group g = peer.getGroup(groupId);
-            assertNotNull(g);
-            assertFalse(g.activeMembers().contains(eve.getLocalUser()),
-                    peer.getLocalUser().username() + " should not see Eve as an active member");
-        }
-
-        // Now Alice (leader) stops - this should trigger election among Bob, Charlie, David
-        alice.stop();
-        peers.remove(alice);
-
-        // Wait for election
-        List<PeerController> remainingPeers = List.of(bob, charlie, david);
-        MultiPeerGroupEventWaiter electionWaiter = new MultiPeerGroupEventWaiter(groupId, TestEvent.LEADER_ELECTED, remainingPeers);
-
-        try {
-            boolean success = electionWaiter.await(30, TimeUnit.SECONDS);
-            assertTrue(success, "Leader election should complete");
-            Thread.sleep(500);
-        } finally {
-            electionWaiter.cleanup();
-        }
-
-        // Verify new leader is NOT Eve (she left) and NOT Alice (she disconnected)
-        Group bobGroup = bob.getGroup(groupId);
-        assertNotNull(bobGroup);
-        String newLeaderId = bobGroup.leader().userId();
-        
-        assertNotEquals(alice.getLocalUser().userId(), newLeaderId, "New leader should not be Alice (disconnected)");
-        assertNotEquals(eve.getLocalUser().userId(), newLeaderId, "New leader should not be Eve (left)");
-        
-        // Verify all remaining peers agree on the leader
-        for (PeerController peer : remainingPeers) {
-            assertEquals(newLeaderId, peer.getGroup(groupId).leader().userId(),
-                    peer.getLocalUser().username() + " should agree on the new leader");
-        }
-
-        System.out.println("[TEST] Test 17: Leader election correctly excludes users who left");
     }
 }

@@ -429,7 +429,7 @@ public class GroupManager {
         notifyGroupEvent(groupId, GroupEvent.USER_JOINED, user.username() + " joined " + group.name());
     }
 
-    public void leaveGroup(String groupId) throws Exception {
+    public void leaveGroup(String groupId){
         Objects.requireNonNull(groupId, "groupId must not be null");
 
         Group group = groups.get(groupId);
