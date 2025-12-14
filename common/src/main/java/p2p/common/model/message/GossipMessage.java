@@ -65,11 +65,6 @@ public final class GossipMessage extends Message {
         return senderUsername;
     }
 
-    @Override
-    public VectorClock getVectorClock() {
-        return super.getVectorClock();
-    }
-
     public Map<String, Long> getLeaderLastSeen() {
         return leaderLastSeen;
     }

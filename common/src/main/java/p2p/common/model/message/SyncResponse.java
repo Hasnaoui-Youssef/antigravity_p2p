@@ -5,7 +5,6 @@ import p2p.common.vectorclock.VectorClock;
 
 import java.io.Serial;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
