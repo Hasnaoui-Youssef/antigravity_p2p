@@ -42,6 +42,7 @@ public class GroupManager {
     private final Map<String, GroupInvitationMessage> pendingInvitations = new ConcurrentHashMap<>();
 
     private LeaderElectionManager electionManager;
+    private p2p.peer.consensus.ConsensusManager consensusManager;
 
     private final List<PeerEventListener> listeners = new CopyOnWriteArrayList<>();
 
@@ -65,6 +66,10 @@ public class GroupManager {
      */
     public void setElectionManager(LeaderElectionManager electionManager) {
         this.electionManager = electionManager;
+    }
+
+    public void setConsensusManager(p2p.peer.consensus.ConsensusManager consensusManager) {
+        this.consensusManager = consensusManager;
     }
 
     /**
@@ -429,7 +434,7 @@ public class GroupManager {
         notifyGroupEvent(groupId, GroupEvent.USER_JOINED, user.username() + " joined " + group.name());
     }
 
-    public void leaveGroup(String groupId){
+    public void leaveGroup(String groupId) {
         Objects.requireNonNull(groupId, "groupId must not be null");
 
         Group group = groups.get(groupId);
@@ -455,6 +460,11 @@ public class GroupManager {
             return;
         }
 
+        // Wait for any active sync requests to complete (graceful leave)
+        if (consensusManager != null) {
+            consensusManager.waitForActiveRequests();
+        }
+
         // 1. If we are the leader, we must hand over leadership first
         if (isLeader(groupId)) {
             // Determine successor from remaining members (excluding self)
@@ -471,7 +481,8 @@ public class GroupManager {
 
             long newEpoch = group.epoch() + 1;
 
-            // Create updated group with new leader (removes successor from members, adds as leader)
+            // Create updated group with new leader (removes successor from members, adds as
+            // leader)
             Group updatedGroup = group.withNewLeader(successor, newEpoch);
 
             // Broadcast election result to all members
@@ -578,7 +589,8 @@ public class GroupManager {
         Group updatedGroup = group.withRemovedMember(user);
         groups.put(groupId, updatedGroup);
 
-        notifyLog("Updated group '" + updatedGroup.name() + "' with " + (updatedGroup.members().size() + 1) + " members");
+        notifyLog(
+                "Updated group '" + updatedGroup.name() + "' with " + (updatedGroup.members().size() + 1) + " members");
         notifyGroupEvent(groupId, GroupEvent.USER_LEFT, user.username() + " left " + updatedGroup.name());
 
         // Check for minimum size (Leader + 2 members = 3 total)

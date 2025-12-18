@@ -18,7 +18,9 @@ public final class ElectionMessage extends Message {
     public enum ElectionType {
         PROPOSAL,
         VOTE,
-        RESULT
+        RESULT,
+        PING,
+        PONG
     }
 
     private final String groupId;
@@ -27,7 +29,7 @@ public final class ElectionMessage extends Message {
     private final long epoch;
 
     public ElectionMessage(String messageId, String senderId, long timestamp,
-                           String groupId, ElectionType electionType, String candidateId, long epoch, VectorClock vectorClock) {
+            String groupId, ElectionType electionType, String candidateId, long epoch, VectorClock vectorClock) {
         super(messageId, senderId, timestamp, MessageTopic.ELECTION, vectorClock);
         this.groupId = Objects.requireNonNull(groupId);
         this.electionType = Objects.requireNonNull(electionType);
@@ -36,7 +38,7 @@ public final class ElectionMessage extends Message {
     }
 
     public static ElectionMessage create(String senderId, String groupId, ElectionType type, String candidateId,
-                                         long epoch, VectorClock vectorClock) {
+            long epoch, VectorClock vectorClock) {
         return new ElectionMessage(
                 UUID.randomUUID().toString(),
                 senderId,

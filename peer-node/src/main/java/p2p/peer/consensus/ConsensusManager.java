@@ -25,6 +25,10 @@ public class ConsensusManager {
     // Map of requestId -> Future to track pending sync requests
     private final Map<String, CompletableFuture<List<ChatMessage>>> pendingRequests = new ConcurrentHashMap<>();
 
+    // Track active incoming sync requests being processed
+    private final java.util.concurrent.atomic.AtomicInteger activeSyncRequests = new java.util.concurrent.atomic.AtomicInteger(
+            0);
+
     // Callback for sync completion notifications
     private SyncCallback syncCallback;
 
@@ -168,7 +172,7 @@ public class ConsensusManager {
      * Query a single member for missing messages.
      */
     private CompletableFuture<List<ChatMessage>> querySingleMember(String groupId, VectorClock lastKnownState,
-                                                                   User member) {
+            User member) {
         CompletableFuture<List<ChatMessage>> future = new CompletableFuture<>();
         String requestId = UUID.randomUUID().toString();
 
@@ -185,8 +189,8 @@ public class ConsensusManager {
     }
 
     private void userQueryRetry(String requestId, String groupId, VectorClock lastKnownState, User member,
-                                int currAttempt, int maxAttempt,
-                                ScheduledFuture<?> timeoutTask, CompletableFuture<List<ChatMessage>> future) {
+            int currAttempt, int maxAttempt,
+            ScheduledFuture<?> timeoutTask, CompletableFuture<List<ChatMessage>> future) {
         if (currAttempt >= maxAttempt || future.isDone())
             return;
         try {
@@ -245,6 +249,7 @@ public class ConsensusManager {
      * Handle incoming sync request from another peer.
      */
     public void handleSyncRequest(String groupId, VectorClock senderClock, User requester, String requestId) {
+        activeSyncRequests.incrementAndGet();
         try {
             Group group = groupManager.getGroup(groupId);
             if (group == null) {
@@ -269,6 +274,23 @@ public class ConsensusManager {
 
         } catch (Exception e) {
             System.err.println("[Consensus] Failed to handle sync request: " + e.getMessage());
+        } finally {
+            activeSyncRequests.decrementAndGet();
+        }
+    }
+
+    /**
+     * Wait for active incoming sync requests to complete.
+     */
+    public void waitForActiveRequests() {
+        long deadline = System.currentTimeMillis() + 3000; // 3 seconds timeout
+        while (activeSyncRequests.get() > 0 && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
     }
 

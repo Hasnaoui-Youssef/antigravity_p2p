@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<AnchorPane prefHeight="421.0" prefWidth="675.0" xmlns="http://javafx.com/javafx/17.0.12" xmlns:fx="http://javafx.com/fxml/1" fx:controller="p2p.peer.peerui.login.LoginController">
+   <children>
+      <TextField layoutX="43.0" layoutY="44.0" prefHeight="18.0" prefWidth="162.0" />
+      <VBox layoutX="43.0" layoutY="128.0" prefHeight="200.0" prefWidth="162.0">
+         <children>
+            <TextField style="-fx-padding: 0px;" />
+            <TextField style="-fx-padding: 0px;" />
+            <TextField style="-fx-padding: 0px;" />
+            <TextField />
+         </children>
+      </VBox>
+   </children>
+</AnchorPane>

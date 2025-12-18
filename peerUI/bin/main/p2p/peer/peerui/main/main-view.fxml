@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<StackPane xmlns="http://javafx.com/javafx/21"
+           xmlns:fx="http://javafx.com/fxml/1"
+           fx:controller="p2p.peer.peerui.main.MainController">
+
+    <!-- Main Content -->
+    <BorderPane styleClass="main-container">
+
+        <!-- Header -->
+        <top>
+            <HBox styleClass="header" alignment="CENTER_LEFT" spacing="16">
+                <Label text="🚀 Antigravity P2P" styleClass="header-title"/>
+
+                <Region HBox.hgrow="ALWAYS"/>
+
+                <!-- User Info -->
+                <VBox alignment="CENTER_RIGHT" spacing="2">
+                    <Label fx:id="usernameLabel" text="Username" style="-fx-font-weight: bold;"/>
+                    <Label fx:id="statusLabel" text="Connected" styleClass="label-secondary"/>
+                </VBox>
+
+                <!-- Disconnect Button -->
+                <Button text="Disconnect" styleClass="button-danger" onAction="#onDisconnect"/>
+            </HBox>
+        </top>
+
+        <!-- Center: SplitPane for resizable sidebar -->
+        <center>
+            <SplitPane fx:id="splitPane" dividerPositions="0.3" styleClass="main-split-pane">
+                <!-- Sidebar -->
+                <fx:include fx:id="sidebar" source="../components/sidebar.fxml"/>
+
+                <!-- Chat Area -->
+                <fx:include fx:id="chatArea" source="../components/chat-area.fxml"/>
+            </SplitPane>
+        </center>
+
+    </BorderPane>
+
+    <!-- Notification Container (overlays on top-right) -->
+    <VBox fx:id="notificationContainer" alignment="TOP_RIGHT" pickOnBounds="false"
+          mouseTransparent="false" maxWidth="320">
+        <padding>
+            <Insets top="80" right="20" bottom="20" left="20"/>
+        </padding>
+    </VBox>
+
+</StackPane>

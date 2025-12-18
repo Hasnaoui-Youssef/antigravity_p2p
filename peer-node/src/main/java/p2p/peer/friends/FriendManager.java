@@ -1,6 +1,8 @@
 package p2p.peer.friends;
 
 import p2p.common.model.User;
+import p2p.common.model.message.CausalOrderComparator;
+import p2p.common.model.message.ChatMessage;
 import p2p.common.model.message.FriendMessage;
 import p2p.common.rmi.PeerService;
 import p2p.common.vectorclock.VectorClock;
@@ -10,6 +12,7 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -27,6 +30,10 @@ public class FriendManager {
     private final Map<String, String> friendUserNameToId = new ConcurrentHashMap<>();
 
     private final Map<String, User> pendingRequests = new ConcurrentHashMap<>();
+    // Track sent requests (username -> timestamp) to filter search results
+    private final Map<String, Long> sentRequests = new ConcurrentHashMap<>();
+
+    private final Map<String, Set<ChatMessage>> friendMessages = new ConcurrentHashMap<>();
 
     private final List<PeerEventListener> listeners = new CopyOnWriteArrayList<>();
 
@@ -67,6 +74,7 @@ public class FriendManager {
         peerService.receiveMessage(message);
 
         notifyLog("Friend request sent to " + target.username());
+        sentRequests.put(target.username(), System.currentTimeMillis());
     }
 
     /**
@@ -111,6 +119,9 @@ public class FriendManager {
 
             notifyLog("Rejected friend request from " + username);
         }
+        // Also remove from sent requests if we were the sender (though this method is
+        // for receiving reject)
+        sentRequests.remove(username);
     }
 
     private void acceptFriendRequest(User requester) throws Exception {
@@ -132,6 +143,7 @@ public class FriendManager {
         peerService.receiveMessage(message);
 
         notifyLog("Accepted friend request from " + requester.username());
+        sentRequests.remove(requester.username());
     }
 
     /**
@@ -154,6 +166,7 @@ public class FriendManager {
      */
     public void handleFriendAcceptance(User accepter) {
         addFriend(accepter);
+        sentRequests.remove(accepter.username());
 
         // Notify listeners
         for (PeerEventListener listener : listeners) {
@@ -166,6 +179,7 @@ public class FriendManager {
      */
     public void handleFriendRejection(User rejecter) {
         notifyLog(rejecter.username() + " rejected your friend request.");
+        sentRequests.remove(rejecter.username());
     }
 
     private void addFriend(User friend) {
@@ -178,6 +192,19 @@ public class FriendManager {
      */
     public boolean isFriend(String userId) {
         return friends.containsKey(userId.toLowerCase());
+    }
+
+    /**
+     * 
+     */
+    public void addMessage(String friendId, ChatMessage message) {
+        friendMessages
+                .computeIfAbsent(friendId, k -> new ConcurrentSkipListSet<>(new CausalOrderComparator()))
+                .add(message);
+    }
+
+    public ArrayList<ChatMessage> getMessages(String userId) {
+        return new ArrayList<>(friendMessages.getOrDefault(userId, Collections.emptySet()));
     }
 
     /**
@@ -209,6 +236,10 @@ public class FriendManager {
      */
     public List<User> getPendingRequests() {
         return new ArrayList<>(pendingRequests.values());
+    }
+
+    public Set<String> getSentRequests() {
+        return new HashSet<>(sentRequests.keySet());
     }
 
     private void notifyLog(String message) {

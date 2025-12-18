@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="p2p.peer.peerui.components.ChatAreaController"
+      styleClass="chat-area">
+
+    <!-- Chat Header -->
+    <HBox fx:id="chatHeader" styleClass="chat-header" alignment="CENTER_LEFT" spacing="12">
+        <padding>
+            <Insets top="16" right="20" bottom="16" left="20"/>
+        </padding>
+        <VBox spacing="2">
+            <Label fx:id="conversationName" text="Select a conversation" styleClass="chat-header-title"/>
+            <Label fx:id="conversationInfo" text="" styleClass="label-secondary"/>
+        </VBox>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Button fx:id="optionsButton" text="⋮" styleClass="button-secondary"
+                visible="false" managed="false" onAction="#onOptions"/>
+    </HBox>
+
+    <!-- Messages Area -->
+    <StackPane VBox.vgrow="ALWAYS">
+        <!-- Empty State -->
+        <VBox fx:id="emptyState" alignment="CENTER" spacing="16">
+            <Label text="💬" style="-fx-font-size: 48px;"/>
+            <Label text="Select a conversation to start chatting" styleClass="label-secondary"/>
+        </VBox>
+
+        <!-- Message List -->
+        <ListView fx:id="messageList" styleClass="message-list" visible="false" managed="false"/>
+    </StackPane>
+
+    <!-- Input Area -->
+    <HBox fx:id="inputArea" styleClass="chat-input-area" alignment="CENTER" spacing="12"
+          visible="false" managed="false">
+        <padding>
+            <Insets top="12" right="20" bottom="16" left="20"/>
+        </padding>
+        <TextField fx:id="messageInput" promptText="Type a message..."
+                   HBox.hgrow="ALWAYS" onAction="#onSendMessage"/>
+        <Button fx:id="sendButton" text="Send" onAction="#onSendMessage"/>
+    </HBox>
+</VBox>

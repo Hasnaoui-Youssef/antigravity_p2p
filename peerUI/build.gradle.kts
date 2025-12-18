@@ -4,7 +4,7 @@ plugins {
 }
 
 application {
-    mainClass.set("p2p.peer.peerui.HelloApplication")
+    mainClass.set("p2p.peer.peerui.PeerUIApplication")
 }
 
 javafx {
@@ -22,7 +22,7 @@ dependencies {
 }
 tasks.withType<Jar> {
     manifest {
-        attributes["Main-Class"] = "p2p.peer.HelloApplication"
+        attributes["Main-Class"] = "p2p.peer.peerui.PeerUIApplication"
     }
 
     // To create a "fat jar" that includes all dependencies

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="p2p.peer.peerui.components.SidebarController"
+      styleClass="sidebar" prefWidth="280" minWidth="250">
+
+    <!-- Search Bar -->
+    <HBox styleClass="sidebar-search" alignment="CENTER_LEFT" spacing="8">
+        <padding>
+            <Insets top="12" right="12" bottom="12" left="12"/>
+        </padding>
+        <TextField fx:id="searchField" promptText="Search users..." HBox.hgrow="ALWAYS"/>
+        <Button fx:id="searchButton" text="🔍" styleClass="button-secondary, search-icon-button" onAction="#onSearch"/>
+    </HBox>
+
+    <!-- Tab Buttons -->
+    <HBox styleClass="sidebar-tabs" alignment="CENTER" spacing="0">
+        <padding>
+            <Insets top="0" right="12" bottom="8" left="12"/>
+        </padding>
+        <ToggleButton fx:id="friendsTab" text="👥 Friends" styleClass="sidebar-tab"
+                      HBox.hgrow="ALWAYS" maxWidth="Infinity" onAction="#onFriendsTabSelected"/>
+        <ToggleButton fx:id="groupsTab" text="💬 Groups" styleClass="sidebar-tab"
+                      HBox.hgrow="ALWAYS" maxWidth="Infinity" onAction="#onGroupsTabSelected"/>
+    </HBox>
+
+    <!-- Contact List -->
+    <ListView fx:id="contactList" styleClass="contact-list" VBox.vgrow="ALWAYS"/>
+
+    <!-- Pending Section -->
+    <VBox fx:id="pendingSection" styleClass="pending-section" spacing="8" managed="false" visible="false">
+        <padding>
+            <Insets top="12" right="12" bottom="12" left="12"/>
+        </padding>
+        <Separator/>
+        <HBox alignment="CENTER_LEFT" spacing="8">
+            <Label text="📩 Pending" styleClass="pending-title"/>
+            <Label fx:id="pendingBadge" styleClass="unread-badge"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Button text="View" styleClass="button-secondary" onAction="#onViewPending"/>
+        </HBox>
+    </VBox>
+
+    <!-- New Group Button -->
+    <HBox alignment="CENTER" styleClass="sidebar-footer">
+        <padding>
+            <Insets top="12" right="12" bottom="12" left="12"/>
+        </padding>
+        <Button fx:id="newGroupButton" text="+ New Group" styleClass="button-secondary"
+                maxWidth="Infinity" HBox.hgrow="ALWAYS" onAction="#onNewGroup"/>
+    </HBox>
+</VBox>

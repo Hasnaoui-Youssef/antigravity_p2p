@@ -30,6 +30,9 @@ public class LeaderElectionManager {
     // Track which epochs we've already voted in: groupId -> Set<epoch>
     private final Map<String, Set<Long>> votedEpochs = new ConcurrentHashMap<>();
 
+    // Track pending election tasks (ping timeouts): groupId -> ScheduledFuture
+    private final Map<String, ScheduledFuture<?>> pendingElectionTasks = new ConcurrentHashMap<>();
+
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -94,13 +97,56 @@ public class LeaderElectionManager {
 
     /**
      * Initiate election when gossip detects leader failure.
+     * Starts by pinging the leader to confirm failure.
      */
     private void initiateElectionForGroup(String groupId) {
         Group group = groupManager.getGroup(groupId);
         if (group == null) {
             return;
         }
+        pingLeader(group);
+    }
 
+    /**
+     * Pings the leader to verify liveness before starting an election.
+     */
+    private void pingLeader(Group group) {
+        String leaderId = group.leader().userId();
+        if (leaderId.equals(localUser.userId())) {
+            return; // We are the leader
+        }
+
+        notifyLog("Suspecting leader failure for group " + group.name() + ". Pinging leader " + leaderId + "...");
+
+        // Send PING
+        ElectionMessage ping = ElectionMessage.create(
+                localUser.userId(), group.groupId(),
+                ElectionMessage.ElectionType.PING,
+                leaderId,
+                group.epoch(),
+                vectorClock.clone());
+
+        sendMessageToUser(leaderId, ping, group);
+
+        // Schedule election if no PONG received
+        ScheduledFuture<?> task = scheduler.schedule(() -> {
+            notifyLog("No PONG received from leader " + leaderId + " for group " + group.name()
+                    + ". Initiating election.");
+            pendingElectionTasks.remove(group.groupId());
+            proceedWithElection(group);
+        }, 2000, TimeUnit.MILLISECONDS);
+
+        ScheduledFuture<?> oldTask = pendingElectionTasks.put(group.groupId(), task);
+        if (oldTask != null) {
+            oldTask.cancel(false);
+        }
+    }
+
+    /**
+     * Proceed with election after confirmed leader failure.
+     */
+    private void proceedWithElection(Group group) {
+        String groupId = group.groupId();
         // Check if group has fallen below minimum size
         // When leader fails, only non-leader members remain
         int remainingMembers = group.members().size(); // Excludes the failed leader
@@ -321,7 +367,7 @@ public class LeaderElectionManager {
                 .filter(u -> u.userId().equals(message.getCandidateId()))
                 .findFirst()
                 .orElse(null);
-        if(newLeader == null) {
+        if (newLeader == null) {
             notifyError("Election result references unknown member " + message.getCandidateId(), null);
             return;
         }
@@ -339,6 +385,54 @@ public class LeaderElectionManager {
                 " - " + message.getCandidateId() + " (epoch " + message.getEpoch() + ")");
 
         notifyLeaderElected(message.getGroupId(), message.getCandidateId(), message.getEpoch());
+    }
+
+    public void handleLeaderPing(ElectionMessage message) {
+        Group group = groupManager.getGroup(message.getGroupId());
+        if (group == null)
+            return;
+
+        // If we are the leader, reply with PONG
+        if (group.leader().userId().equals(localUser.userId())) {
+            notifyLog("Received PING from " + message.getSenderId() + ". Replying with PONG.");
+            ElectionMessage pong = ElectionMessage.create(
+                    localUser.userId(), group.groupId(),
+                    ElectionMessage.ElectionType.PONG,
+                    localUser.userId(),
+                    group.epoch(),
+                    vectorClock.clone());
+
+            sendMessageToUser(message.getSenderId(), pong, group);
+        }
+    }
+
+    public void handleLeaderPong(ElectionMessage message) {
+        String groupId = message.getGroupId();
+        ScheduledFuture<?> task = pendingElectionTasks.remove(groupId);
+        if (task != null) {
+            task.cancel(false);
+            notifyLog("Received PONG from leader " + message.getSenderId() + ". Leader is alive. Cancelling election.");
+            recordLeaderActivity(groupId);
+        }
+    }
+
+    /**
+     * Handle user leaving the group.
+     * If the leaving user is the current candidate, restart the election.
+     */
+    public void handleUserLeft(String groupId, String userId) {
+        ElectionState state = ongoingElections.get(groupId);
+        if (state != null && state.candidateId.equals(userId)) {
+            notifyLog("Candidate " + userId + " left the group. Restarting election for group " + groupId);
+            ongoingElections.remove(groupId);
+
+            // Trigger new election with updated group (user already removed by
+            // GroupManager)
+            Group group = groupManager.getGroup(groupId);
+            if (group != null) {
+                initiateElection(group);
+            }
+        }
     }
 
     /**
@@ -401,30 +495,36 @@ public class LeaderElectionManager {
      * Send message to a specific user.
      */
     private void sendMessageToUser(String userId, ElectionMessage message, Group group) {
-        User target = group.members().stream()
-                .filter(u -> u.userId().equals(userId))
-                .findFirst()
-                .orElse(null);
+        User target = null;
+        if (group.leader().userId().equals(userId)) {
+            target = group.leader();
+        } else {
+            target = group.members().stream()
+                    .filter(u -> u.userId().equals(userId))
+                    .findFirst()
+                    .orElse(null);
+        }
 
         if (target == null) {
             notifyError("Cannot find user " + userId +
-                    " in group members to send vote", null);
+                    " in group members to send " + message.getElectionType(), null);
             return;
         }
 
+        final User finalTarget = target;
         notifyLog("Sending " + message.getElectionType() + " to " +
-                target.username() + " at " + target.ipAddress() + ":" + target.rmiPort());
+                finalTarget.username() + " at " + finalTarget.ipAddress() + ":" + finalTarget.rmiPort());
 
         executor.submit(() -> {
             try {
-                Registry registry = LocateRegistry.getRegistry(target.ipAddress(), target.rmiPort());
+                Registry registry = LocateRegistry.getRegistry(finalTarget.ipAddress(), finalTarget.rmiPort());
                 PeerService peerService = (PeerService) registry.lookup("PeerService");
                 peerService.receiveMessage(message);
                 notifyLog("Successfully sent " + message.getElectionType() +
-                        " to " + target.username());
+                        " to " + finalTarget.username());
             } catch (Exception e) {
                 notifyError("Failed to send " + message.getElectionType() +
-                        " to " + target.username(), e);
+                        " to " + finalTarget.username(), e);
             }
         });
     }
@@ -526,25 +626,28 @@ public class LeaderElectionManager {
 
     private void notifyLog(String message) {
         for (PeerEventListener listener : listeners) {
-            try{
+            try {
                 listener.onLog(message);
-            }catch(RuntimeException ignored){}
+            } catch (RuntimeException ignored) {
+            }
         }
     }
 
     private void notifyError(String message, Throwable t) {
         for (PeerEventListener listener : listeners) {
-            try{
+            try {
                 listener.onError(message, t);
-            }catch(RuntimeException ignored){}
+            } catch (RuntimeException ignored) {
+            }
         }
     }
 
     private void notifyLeaderElected(String groupId, String leaderId, long epoch) {
         for (PeerEventListener listener : listeners) {
-            try{
+            try {
                 listener.onLeaderElected(groupId, leaderId, epoch);
-            }catch(RuntimeException ignored){}
+            } catch (RuntimeException ignored) {
+            }
         }
     }
 }

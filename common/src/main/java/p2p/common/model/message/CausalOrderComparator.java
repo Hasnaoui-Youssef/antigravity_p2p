@@ -11,7 +11,8 @@ import java.util.Comparator;
  * Ordering rules:
  * 1. If m1.clock.happensBefore(m2.clock) -> m1 comes before m2
  * 2. If m2.clock.happensBefore(m1.clock) -> m2 comes before m1
- * 3. If concurrent (neither happens-before): compare sender IDs lexicographically
+ * 3. If concurrent (neither happens-before): compare sender IDs
+ * lexicographically
  * 4. If same sender with concurrent clocks: use message ID as final tiebreaker
  */
 public class CausalOrderComparator implements Comparator<Message> {
@@ -38,13 +39,19 @@ public class CausalOrderComparator implements Comparator<Message> {
             return 1;
         }
 
-        // Concurrent events: use sender ID as primary tiebreaker
+        // Concurrent events: use timestamp as primary tiebreaker
+        int timestampCompare = Long.compare(m1.getTimestamp(), m2.getTimestamp());
+        if (timestampCompare != 0) {
+            return timestampCompare;
+        }
+
+        // Secondary tiebreaker: sender ID
         int senderCompare = m1.getSenderId().compareTo(m2.getSenderId());
         if (senderCompare != 0) {
             return senderCompare;
         }
 
-        // Same sender with concurrent clocks: use message ID as final tiebreaker
+        // Final tiebreaker: message ID
         return messageIDCompare;
     }
 }

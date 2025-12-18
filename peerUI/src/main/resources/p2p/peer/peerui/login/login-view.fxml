@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox styleClass="login-container" xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="p2p.peer.peerui.login.LoginController"
+      alignment="CENTER" spacing="0">
+
+    <!-- Login Card -->
+    <ScrollPane fitToWidth="true" style="-fx-background-color: transparent; -fx-background: transparent;" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" maxWidth="380" maxHeight="600">
+        <content>
+            <VBox styleClass="login-card" spacing="24" alignment="CENTER">
+                <padding>
+                    <Insets top="20" right="20" bottom="20" left="20"/>
+                </padding>
+
+                <!-- Header -->
+                <VBox alignment="CENTER" spacing="8">
+                    <Label text="🚀 Antigravity P2P" styleClass="login-title"/>
+                    <Label text="Connect to the decentralized network" styleClass="login-subtitle"/>
+                </VBox>
+
+                <!-- Username Field -->
+                <VBox spacing="8">
+                    <Label text="Username" styleClass="label"/>
+                    <TextField fx:id="usernameField" promptText="Enter your username"/>
+                </VBox>
+
+                <!-- Advanced Options -->
+                <TitledPane fx:id="advancedPane" text="⚙ Advanced Options" expanded="false" animated="true">
+                    <VBox spacing="16">
+                        <padding>
+                            <Insets top="8"/>
+                        </padding>
+
+                        <!-- UDP Port -->
+                        <VBox spacing="4">
+                            <Label text="UDP Port (Heartbeat)" styleClass="label-secondary"/>
+                            <TextField fx:id="udpPortField" promptText="9876"/>
+                        </VBox>
+
+                        <!-- RMI Port -->
+                        <VBox spacing="4">
+                            <Label text="RMI Port (Peer Service)" styleClass="label-secondary"/>
+                            <TextField fx:id="rmiPortField" promptText="1099"/>
+                        </VBox>
+
+                        <!-- Bootstrap Host -->
+                        <VBox spacing="4">
+                            <Label text="Bootstrap Server Host" styleClass="label-secondary"/>
+                            <TextField fx:id="bootstrapHostField" promptText="localhost"/>
+                        </VBox>
+
+                        <!-- Bootstrap Port -->
+                        <VBox spacing="4">
+                            <Label text="Bootstrap Server Port" styleClass="label-secondary"/>
+                            <TextField fx:id="bootstrapPortField" promptText="1099"/>
+                        </VBox>
+                    </VBox>
+                </TitledPane>
+
+                <!-- Connect Button -->
+                <Button fx:id="connectButton" text="Connect" onAction="#onConnect"
+                        maxWidth="Infinity"/>
+
+            </VBox>
+        </content>
+    </ScrollPane>
+</VBox>

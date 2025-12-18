@@ -410,7 +410,7 @@ class GroupChatIntegrationTest {
         peers.remove(alice);
 
         // Wait for leader failure detection and auto-dissolution
-        Thread.sleep(8000);
+        Thread.sleep(15000);
 
         // Group should be dissolved for Bob and Charlie (fell below minimum of 3)
         assertNull(bob.getGroup(groupId),

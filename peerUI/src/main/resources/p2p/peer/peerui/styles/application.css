@@ -1,0 +1,500 @@
+/*
+ * Antigravity P2P - Application Stylesheet
+ * Modern dark theme with accent colors
+ */
+
+/* ========== Root ========== */
+.root {
+    -fx-font-family: 'Segoe UI', 'Roboto', sans-serif;
+    -fx-font-size: 14px;
+    -fx-background-color: #0f172a;
+}
+
+/* ========== Labels ========== */
+.label {
+    -fx-text-fill: #f1f5f9;
+}
+
+.label-secondary {
+    -fx-text-fill: #94a3b8;
+}
+
+.label-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f1f5f9;
+}
+
+.label-subtitle {
+    -fx-font-size: 14px;
+    -fx-text-fill: #94a3b8;
+}
+
+/* ========== Text Fields ========== */
+.text-field {
+    -fx-background-color: #1e293b;
+    -fx-text-fill: #f1f5f9;
+    -fx-prompt-text-fill: #64748b;
+    -fx-border-color: #475569;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-padding: 10px 12px;
+}
+
+.text-field:focused {
+    -fx-border-color: #6366f1;
+    -fx-background-color: #334155;
+}
+
+/* ========== Buttons ========== */
+.button {
+    -fx-background-color: #6366f1;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-padding: 12px 24px;
+    -fx-background-radius: 6px;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-background-color: #818cf8;
+}
+
+.button:pressed {
+    -fx-background-color: #4f46e5;
+}
+
+.button:disabled {
+    -fx-opacity: 0.5;
+}
+
+.button-danger {
+    -fx-background-color: #ef4444;
+}
+
+.button-danger:hover {
+    -fx-background-color: #dc2626;
+}
+
+.button-secondary {
+    -fx-background-color: #334155;
+    -fx-text-fill: #f1f5f9;
+}
+
+.button-secondary:hover {
+    -fx-background-color: #475569;
+}
+
+.search-icon-button {
+    -fx-padding: 10px 16px;
+    -fx-font-size: 16px;
+}
+
+/* ========== Toggle Buttons (Tabs) ========== */
+.sidebar-tab {
+    -fx-background-color: #1e293b;
+    -fx-text-fill: #94a3b8;
+    -fx-padding: 10px 16px;
+    -fx-background-radius: 6px;
+    -fx-font-weight: normal;
+}
+
+.sidebar-tab:hover {
+    -fx-background-color: #334155;
+}
+
+.sidebar-tab:selected {
+    -fx-background-color: #6366f1;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+/* ========== TitledPane (Advanced Options) ========== */
+.titled-pane {
+    -fx-text-fill: #f1f5f9;
+}
+
+.titled-pane>.title {
+    -fx-background-color: #1e293b;
+    -fx-background-radius: 6px;
+    -fx-padding: 8px 12px;
+}
+
+.titled-pane>.title>.text {
+    -fx-fill: #f1f5f9;
+}
+
+.titled-pane>.title>.arrow-button {
+    -fx-background-color: transparent;
+}
+
+.titled-pane>.title>.arrow-button>.arrow {
+    -fx-background-color: #94a3b8;
+}
+
+.titled-pane>.content {
+    -fx-background-color: #1e293b;
+    -fx-border-color: #475569;
+    -fx-border-width: 0 1 1 1;
+    -fx-border-radius: 0 0 6px 6px;
+    -fx-background-radius: 0 0 6px 6px;
+    -fx-padding: 12px;
+}
+
+/* ========== Containers ========== */
+.container {
+    -fx-background-color: #0f172a;
+    -fx-padding: 24px;
+}
+
+.card {
+    -fx-background-color: #1e293b;
+    -fx-background-radius: 12px;
+    -fx-padding: 24px;
+}
+
+/* ========== Login Screen Specific ========== */
+.login-container {
+    -fx-background-color: #0f172a;
+    -fx-padding: 40px;
+    -fx-alignment: center;
+}
+
+.login-card {
+    -fx-background-color: #1e293b;
+    -fx-background-radius: 16px;
+    -fx-padding: 32px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.3), 20, 0, 0, 4);
+}
+
+.login-title {
+    -fx-font-size: 28px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #6366f1;
+}
+
+.login-subtitle {
+    -fx-font-size: 14px;
+    -fx-text-fill: #94a3b8;
+}
+
+/* ========== Main Screen Specific ========== */
+.main-container {
+    -fx-background-color: #0f172a;
+}
+
+.main-split-pane {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.main-split-pane>.split-pane-divider {
+    -fx-background-color: #0f172a;
+    -fx-padding: 0 2px;
+}
+
+.header {
+    -fx-background-color: #1e293b;
+    -fx-padding: 16px 24px;
+    -fx-border-color: #475569;
+    -fx-border-width: 0 0 1 0;
+}
+
+.header-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f1f5f9;
+}
+
+/* ========== Sidebar ========== */
+.sidebar {
+    -fx-background-color: #1e293b;
+    -fx-border-color: #475569;
+    -fx-border-width: 0 1 0 0;
+}
+
+.sidebar-search {
+    -fx-background-color: transparent;
+}
+
+.sidebar-tabs {
+    -fx-background-color: transparent;
+}
+
+.sidebar-footer {
+    -fx-background-color: transparent;
+    -fx-border-color: #475569;
+    -fx-border-width: 1 0 0 0;
+}
+
+/* ========== Contact List ========== */
+.contact-list {
+    -fx-background-color: #1e293b;
+    -fx-control-inner-background: #1e293b;
+    -fx-control-inner-background-alt: #1e293b;
+    -fx-padding: 0;
+}
+
+.contact-list .list-cell {
+    -fx-background-color: #1e293b;
+    -fx-padding: 12px 16px;
+    -fx-text-fill: #f1f5f9;
+}
+
+.contact-list .list-cell:odd {
+    -fx-background-color: #1e293b;
+}
+
+.contact-list .list-cell:hover {
+    -fx-background-color: #334155;
+}
+
+.contact-list .list-cell:selected {
+    -fx-background-color: #6366f1;
+}
+
+.contact-list .list-cell:selected:hover {
+    -fx-background-color: #818cf8;
+}
+
+.contact-list .list-cell:selected .contact-name,
+.contact-list .list-cell:selected .label {
+    -fx-text-fill: white;
+}
+
+.contact-list .list-cell:focused:selected {
+    -fx-background-color: #6366f1;
+}
+
+.contact-list .list-cell:empty {
+    -fx-background-color: transparent;
+    -fx-cursor: default;
+}
+
+.contact-list .list-cell:empty:hover {
+    -fx-background-color: transparent;
+}
+
+.contact-list .list-cell:empty:selected {
+    -fx-background-color: transparent;
+}
+
+.contact-item {
+    -fx-background-color: transparent;
+}
+
+.contact-item-unread .contact-name {
+    -fx-font-weight: bold;
+}
+
+.contact-name {
+    -fx-text-fill: #f1f5f9;
+}
+
+/* ========== Unread Badge ========== */
+.unread-badge {
+    -fx-background-color: #6366f1;
+    -fx-text-fill: white;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 2px 6px;
+    -fx-background-radius: 10px;
+    -fx-min-width: 18px;
+    -fx-alignment: center;
+}
+
+/* ========== Pending Section ========== */
+.pending-section {
+    -fx-background-color: transparent;
+}
+
+.pending-title {
+    -fx-font-weight: bold;
+    -fx-text-fill: #f1f5f9;
+}
+
+/* ========== Chat Area ========== */
+.chat-area {
+    -fx-background-color: #0f172a;
+}
+
+.chat-header {
+    -fx-background-color: #1e293b;
+    -fx-border-color: #475569;
+    -fx-border-width: 0 0 1 0;
+}
+
+.chat-header-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f1f5f9;
+}
+
+.chat-input-area {
+    -fx-background-color: #1e293b;
+    -fx-border-color: #475569;
+    -fx-border-width: 1 0 0 0;
+}
+
+/* ========== Message List ========== */
+.message-list {
+    -fx-background-color: transparent;
+    -fx-padding: 8px;
+}
+
+.message-list .list-cell {
+    -fx-background-color: transparent;
+}
+
+/* ========== Message Bubbles ========== */
+.message-bubble {
+    -fx-padding: 10px 14px;
+    -fx-background-radius: 16px;
+}
+
+.message-bubble-sent {
+    -fx-background-color: #6366f1;
+}
+
+.message-bubble-sent .message-content {
+    -fx-text-fill: white;
+}
+
+.message-bubble-sent .message-time {
+    -fx-text-fill: rgba(255, 255, 255, 0.7);
+}
+
+.message-bubble-received {
+    -fx-background-color: #334155;
+}
+
+.message-bubble-received .message-content {
+    -fx-text-fill: #f1f5f9;
+}
+
+.message-bubble-received .message-time {
+    -fx-text-fill: #94a3b8;
+}
+
+.message-sender {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #818cf8;
+}
+
+.message-content {
+    -fx-font-size: 14px;
+}
+
+.message-time {
+    -fx-font-size: 11px;
+}
+
+/* ========== Notification Toast ========== */
+.notification-toast {
+    -fx-background-color: #1e293b;
+    -fx-background-radius: 8px;
+    -fx-padding: 12px 16px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.4), 12, 0, 0, 4);
+    -fx-border-color: #475569;
+    -fx-border-width: 1px;
+    -fx-border-radius: 8px;
+}
+
+.notification-toast-title {
+    -fx-font-weight: bold;
+    -fx-text-fill: #f1f5f9;
+}
+
+.notification-toast-message {
+    -fx-text-fill: #94a3b8;
+}
+
+.notification-toast-error {
+    -fx-border-color: #ef4444;
+    -fx-border-width: 0 0 0 3px;
+}
+
+.notification-toast-success {
+    -fx-border-color: #22c55e;
+    -fx-border-width: 0 0 0 3px;
+}
+
+/* ========== Scrollbars ========== */
+.scroll-pane {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar {
+    -fx-background-color: #1e293b;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: #334155;
+    -fx-background-radius: 4px;
+}
+
+.scroll-bar .thumb:hover {
+    -fx-background-color: #475569;
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.scroll-bar .increment-arrow,
+.scroll-bar .decrement-arrow {
+    -fx-shape: "";
+    -fx-padding: 0;
+}
+
+/* ========== Separators ========== */
+.separator .line {
+    -fx-border-color: #475569;
+    -fx-border-width: 1 0 0 0;
+}
+
+/* ========== Dialogs ========== */
+.dialog-pane {
+    -fx-background-color: #1e293b;
+}
+
+.dialog-pane .header-panel {
+    -fx-background-color: #1e293b;
+}
+
+.dialog-pane .content {
+    -fx-background-color: #1e293b;
+}
+
+.alert.confirmation .dialog-pane,
+.alert.information .dialog-pane,
+.alert.warning .dialog-pane,
+.alert.error .dialog-pane {
+    -fx-background-color: #1e293b;
+}
+
+/* ========== Utility Classes ========== */
+.spacing-sm {
+    -fx-spacing: 8px;
+}
+
+.spacing-md {
+    -fx-spacing: 16px;
+}
+
+.spacing-lg {
+    -fx-spacing: 24px;
+}
+
+.contact-list .virtual-flow,
+.contact-list .virtual-flow .clipped-container,
+.contact-list .virtual-flow .sheet,
+.contact-list .placeholder,
+.contact-list .scroll-bar,
+.contact-list .scroll-bar .track,
+.contact-list .scroll-bar .track-background {
+    -fx-background-color: #1e293b;
+}

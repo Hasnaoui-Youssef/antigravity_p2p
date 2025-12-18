@@ -25,6 +25,7 @@ import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -77,12 +78,14 @@ public class PeerController implements PeerService {
 
         this.friendManager = new FriendManager(localUser, vectorClock);
         this.groupManager = new GroupManager(localUser, vectorClock, friendManager);
-        this.messageHandler = new MessageHandler(localUser, vectorClock, friendManager);
         this.gossipManager = new GossipManager(localUser, groupManager);
         this.consensusManager = new ConsensusManager(localUser, groupManager, vectorClock);
         this.gossipManager.setConsensusManager(consensusManager);
+        this.groupManager.setConsensusManager(consensusManager);
 
         this.electionManager = new LeaderElectionManager(localUser, groupManager, vectorClock);
+        this.messageHandler = new MessageHandler(localUser, vectorClock, friendManager, groupManager, electionManager);
+
         this.electionManager.setGossipManager(gossipManager);
         this.groupManager.setElectionManager(electionManager);
 
@@ -116,7 +119,7 @@ public class PeerController implements PeerService {
         listeners.remove(listener);
     }
 
-    public List<PeerEventListener> getEventListeners(){
+    public List<PeerEventListener> getEventListeners() {
         return List.copyOf(listeners);
     }
 
@@ -213,6 +216,10 @@ public class PeerController implements PeerService {
         return friendManager.getPendingRequests();
     }
 
+    public Set<String> getSentRequests() {
+        return friendManager.getSentRequests();
+    }
+
     public User getLocalUser() {
         return localUser;
     }
@@ -263,7 +270,7 @@ public class PeerController implements PeerService {
     public void sendGroupMessage(String groupId, String content) {
         Group group = groupManager.getGroup(groupId);
         if (group == null) {
-            throw new IllegalArgumentException("Not a member of group: " + groupId);
+            throw new IllegalArgumentException("Unknown group: " + groupId);
         }
 
         ChatMessage message = ChatMessage.createGroup(localUser, groupId, content, vectorClock);
@@ -272,18 +279,28 @@ public class PeerController implements PeerService {
         // Store message locally first
         groupManager.addMessage(groupId, message);
 
-        // Broadcast to ALL active participants (members + leader)
-        for (User member : group.activeMembers()) {
-            if (member.userId().equals(localUser.userId())) {
-                continue; // Skip self
+        if (group.leader().userId().equals(localUser.userId())) {
+            // I am leader: Broadcast to ALL active participants (excluding self)
+            for (User member : group.activeMembers()) {
+                if (member.userId().equals(localUser.userId())) {
+                    continue; // Skip self
+                }
+                sendMessageToMember(member, message);
             }
-            try {
-                Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
-                PeerService peerService = (PeerService) registry.lookup("PeerService");
-                peerService.receiveMessage(message);
-            } catch (Exception e) {
-                notifyError("Failed to send to " + member.username(), e);
-            }
+        } else {
+            // I am not leader: Send ONLY to leader
+            User leader = group.leader();
+            sendMessageToMember(leader, message);
+        }
+    }
+
+    private void sendMessageToMember(User member, Message message) {
+        try {
+            Registry registry = LocateRegistry.getRegistry(member.ipAddress(), member.rmiPort());
+            PeerService peerService = (PeerService) registry.lookup("PeerService");
+            peerService.receiveMessage(message);
+        } catch (Exception e) {
+            notifyError("Failed to send to " + member.username(), e);
         }
     }
 
@@ -293,6 +310,14 @@ public class PeerController implements PeerService {
 
     public Group getGroup(String groupId) {
         return groupManager.getGroup(groupId);
+    }
+
+    public List<ChatMessage> getFriendMessages(String userId) {
+        return friendManager.getMessages(userId);
+    }
+
+    public List<ChatMessage> getGroupMessages(String groupId) {
+        return groupManager.getMessages(groupId);
     }
 
     // ========== PeerService RMI Implementation ==========
@@ -337,9 +362,12 @@ public class PeerController implements PeerService {
                 }
                 // Logic for user rejected if we were tracking it in active groups
             }
-            case USER_LEFT -> // USER_LEFT can come from the user themselves or the leader.
+            case USER_LEFT -> {
+                // USER_LEFT can come from the user themselves or the leader.
                 // We trust it for now as per design.
-                    groupManager.removeUser(message.getGroup().groupId(), message.getAffectedUser());
+                groupManager.removeUser(message.getGroup().groupId(), message.getAffectedUser());
+                electionManager.handleUserLeft(message.getGroup().groupId(), message.getAffectedUser().userId());
+            }
             case DISSOLVED -> groupManager.dissolveGroup(message.getGroup().groupId());
         }
     }
@@ -351,18 +379,7 @@ public class PeerController implements PeerService {
                 vectorClock.update(msgClock);
             }
         }
-        if (message.getSubtopic() == ChatMessage.ChatSubtopic.DIRECT) {
-            // Handle direct message
-            messageHandler.handleIncomingChatMessage(message);
-        } else {
-            // GROUP message
-            groupManager.addMessage(message.getGroupId(), message);
-
-            Group group = groupManager.getGroup(message.getGroupId());
-            if (group != null && message.getSenderId().equals(group.leader().userId())) {
-                electionManager.recordLeaderActivity(message.getGroupId());
-            }
-        }
+        messageHandler.handleIncomingChatMessage(message);
 
         // Notify all listeners for both DIRECT and GROUP messages
         for (PeerEventListener listener : listeners) {
@@ -446,6 +463,8 @@ public class PeerController implements PeerService {
             case PROPOSAL -> electionManager.handleElectionProposal(message);
             case VOTE -> electionManager.handleElectionVote(message);
             case RESULT -> electionManager.handleElectionResult(message);
+            case PING -> electionManager.handleLeaderPing(message);
+            case PONG -> electionManager.handleLeaderPong(message);
         }
     }
 
