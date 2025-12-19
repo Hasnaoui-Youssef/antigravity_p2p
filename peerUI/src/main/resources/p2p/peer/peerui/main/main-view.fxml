@@ -24,6 +24,9 @@
                     <Label fx:id="statusLabel" text="Connected" styleClass="label-secondary"/>
                 </VBox>
 
+                <!-- Failure Simulation Button -->
+                <Button fx:id="failureButton" text="⚡ Fail" styleClass="button-warning" onAction="#onToggleFailure"/>
+
                 <!-- Disconnect Button -->
                 <Button text="Disconnect" styleClass="button-danger" onAction="#onDisconnect"/>
             </HBox>

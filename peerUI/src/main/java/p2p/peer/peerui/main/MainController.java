@@ -3,9 +3,11 @@ package p2p.peer.peerui.main;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.VBox;
 import p2p.common.model.Group;
@@ -40,6 +42,10 @@ public class MainController implements PeerEventListener {
     private Label statusLabel;
     @FXML
     private VBox notificationContainer;
+    @FXML
+    private SplitPane splitPane;
+    @FXML
+    private Button failureButton;
 
     // Injected sub-controllers from fx:include
     @FXML
@@ -96,6 +102,38 @@ public class MainController implements PeerEventListener {
         }
         unreadTracker.clear();
         sceneManager.showLogin();
+    }
+
+    @FXML
+    private void onToggleFailure() {
+        if (peerController == null)
+            return;
+
+        if (peerController.isStarted()) {
+            // Simulate failure
+            peerController.simulateNetworkFailure();
+            splitPane.setDisable(true);
+            failureButton.setText("Reconnect");
+            failureButton.getStyleClass().remove("button-warning");
+            failureButton.getStyleClass().add("button-success");
+            statusLabel.setText("Network Failure");
+            statusLabel.setStyle("-fx-text-fill: #ef4444;"); // Red
+            notificationManager.showErrorNotification("Network Connection Lost", "Simulated network failure active.");
+        } else {
+            // Restore
+            try {
+                peerController.restoreNetwork();
+                splitPane.setDisable(false);
+                failureButton.setText("⚡ Fail");
+                failureButton.getStyleClass().remove("button-success");
+                failureButton.getStyleClass().add("button-warning");
+                statusLabel.setText("Connected");
+                statusLabel.setStyle(""); // Reset style
+                notificationManager.showSuccessNotification("Network Restored", "Connection re-established.");
+            } catch (Exception e) {
+                notificationManager.showErrorNotification("Restoration Failed", e.getMessage());
+            }
+        }
     }
 
     /**

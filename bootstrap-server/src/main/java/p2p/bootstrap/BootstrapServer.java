@@ -18,6 +18,11 @@ public class BootstrapServer {
         try {
             System.out.println("=== Antigravity P2P Bootstrap Server ===");
 
+            // Set RMI hostname to public/LAN IP
+            String localIp = p2p.common.util.NetworkUtil.getLocalIpAddress();
+            System.setProperty("java.rmi.server.hostname", localIp);
+            System.out.println("[Bootstrap] RMI hostname set to: " + localIp);
+
             // Create user registry
             UserRegistry userRegistry = new UserRegistry();
 

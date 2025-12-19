@@ -70,7 +70,10 @@ public class PeerController implements PeerService {
             throws Exception {
         // No super() call here to avoid premature export
 
-        String localIp = InetAddress.getLocalHost().getHostAddress();
+        // Set RMI hostname to public/LAN IP
+        String localIp = p2p.common.util.NetworkUtil.getLocalIpAddress();
+        System.setProperty("java.rmi.server.hostname", localIp);
+
         this.localUser = User.create(username, localIp, rmiPort);
 
         this.vectorClock = new VectorClock();

@@ -78,12 +78,26 @@ public class NotificationManager {
     }
 
     /**
+     * Shows an error notification with custom title.
+     */
+    public void showErrorNotification(String title, String message) {
+        showNotification(title, message, "notification-toast", "notification-toast-error");
+    }
+
+    /**
      * Shows a success notification.
      *
      * @param message Success message to display
      */
     public void showSuccessNotification(String message) {
         showNotification("✓ Success", message, "notification-toast", "notification-toast-success");
+    }
+
+    /**
+     * Shows a success notification with custom title.
+     */
+    public void showSuccessNotification(String title, String message) {
+        showNotification(title, message, "notification-toast", "notification-toast-success");
     }
 
     /**
