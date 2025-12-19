@@ -14,6 +14,7 @@ public class NetworkUtil {
     /**
      * Gets the local IP address of the machine.
      * It prefers site-local addresses (192.168.x.x, 10.x.x.x, etc.) over loopback.
+     * Skips virtual network interfaces (e.g., VMware, VirtualBox, Docker, WSL vEthernet).
      *
      * @return The local IP address string.
      */
@@ -25,6 +26,11 @@ public class NetworkUtil {
 
                 // Skip loopback and disabled interfaces
                 if (iface.isLoopback() || !iface.isUp()) {
+                    continue;
+                }
+
+                // Skip virtual network interfaces
+                if (isVirtualInterface(iface)) {
                     continue;
                 }
 
@@ -49,5 +55,38 @@ public class NetworkUtil {
                     .println("[NetworkUtil] Failed to resolve local IP, falling back to localhost: " + e.getMessage());
             return "127.0.0.1";
         }
+    }
+
+    /**
+     * Checks if a network interface is a virtual interface.
+     * Identifies common virtual adapters like VMware, VirtualBox, Hyper-V, Docker, and WSL.
+     *
+     * @param iface The network interface to check.
+     * @return true if the interface is virtual, false otherwise.
+     */
+    private static boolean isVirtualInterface(NetworkInterface iface) {
+        try {
+            if (iface.isVirtual()) {
+                return true;
+            }
+        } catch (Exception ignored) {
+        }
+
+        String name = iface.getName().toLowerCase();
+        String displayName = iface.getDisplayName().toLowerCase();
+
+        // Common virtual interface patterns
+        String[] virtualPatterns = {
+            "vmware", "virtualbox", "vbox", "hyper-v", "vethernet",
+            "docker", "virbr", "vnic", "vmnet", "veth", "wsl"
+        };
+
+        for (String pattern : virtualPatterns) {
+            if (name.contains(pattern) || displayName.contains(pattern)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
